@@ -1,0 +1,47 @@
+plugins {
+    id 'base'
+}
+
+group = 'com.bigbangcraft'
+version = '0.1.0'
+
+ext {
+    paperApiVersion = '26.2.build.120-stable'
+    velocityApiVersion = '4.1.1'
+    snakeYamlVersion = '2.4'
+    junitVersion = '5.12.2'
+    junitPlatformVersion = '1.12.2'
+}
+
+allprojects {
+    group = rootProject.group
+    version = rootProject.version
+
+    repositories {
+        mavenCentral()
+        maven { name = 'Paper'; url = uri('https://repo.papermc.io/repository/maven-public/') }
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
+        withSourcesJar()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.compilerArgs += ['-Xlint:all']
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
+    }
+}
+
+tasks.register('buildRuntimeArtifacts') {
+    dependsOn ':bigbanghub-paper:shadowJar', ':bigbanghub-velocity:shadowJar'
+}

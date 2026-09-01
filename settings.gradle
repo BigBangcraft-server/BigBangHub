@@ -1,0 +1,14 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    }
+}
+
+plugins {
+    id 'com.gradleup.shadow' version '9.0.0' apply false
+}
+
+rootProject.name = 'BigBangHub'
+include 'bigbanghub-api', 'bigbanghub-common', 'bigbanghub-paper', 'bigbanghub-velocity'

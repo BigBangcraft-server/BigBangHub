@@ -168,6 +168,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private InMemoryPartyService partyService;
     private PartyEventBus partyEventBus;
     private RematchService rematchService;
+    private VelocityExperienceService experienceService;
 
     @Inject
     public BigBangHubVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -299,6 +300,10 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     public void checkAndHandleReconnect(Player player) {
         Optional<MatchSnapshot> pending = findPendingReconnect(player.getUniqueId());
         if (pending.isEmpty()) return;
+
+        if (experienceService != null) {
+            experienceService.notifyReconnectAvailable(player);
+        }
 
         HubConfigSnapshot snapshot = configSnapshot();
         if (snapshot.match().autoReconnect()) {
@@ -829,15 +834,23 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
         RematchService.RematchVoteResult result = resultOpt.get();
         for (UUID pid : result.participants()) {
-            proxy.getPlayer(pid).ifPresent(p ->
-                    p.sendPlainMessage("§e[Rematch] " + player.getUsername() + " votou por revanche! ("
-                            + result.currentVotes() + "/" + result.requiredVotes() + ")"));
+            proxy.getPlayer(pid).ifPresent(p -> {
+                p.sendPlainMessage("§e[Rematch] " + player.getUsername() + " votou por revanche! ("
+                        + result.currentVotes() + "/" + result.requiredVotes() + ")");
+                if (experienceService != null) {
+                    experienceService.notifyRematchVote(p, player.getUsername(), result.currentVotes(), result.requiredVotes());
+                }
+            });
         }
 
         if (result.consensusReached()) {
             for (UUID pid : result.participants()) {
-                proxy.getPlayer(pid).ifPresent(p ->
-                        p.sendPlainMessage("§a[Rematch] Revanche aceita por todos os jogadores! Iniciando nova partida..."));
+                proxy.getPlayer(pid).ifPresent(p -> {
+                    p.sendPlainMessage("§a[Rematch] Revanche aceita por todos os jogadores! Iniciando nova partida...");
+                    if (experienceService != null) {
+                        experienceService.notifyRematchConsensus(p);
+                    }
+                });
             }
             startRematchGame(result.gameId(), result.participants());
         }
@@ -1095,6 +1108,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             for (UUID memberId : groupMembers) {
                 Player member = proxy.getPlayer(memberId).orElse(null);
                 if (member != null) {
+                    if (experienceService != null) {
+                        experienceService.notifyMatchFound(member);
+                    }
                     if (finalParty != null) {
                         member.sendPlainMessage("Partida encontrada no servidor " + targetInstanceId + "! Conectando com sua party...");
                     } else {
@@ -1681,6 +1697,8 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         partyEventBus = new PartyEventBus();
         partyService = new InMemoryPartyService(snapshot.party(), partyEventBus);
         rematchService = new RematchService();
+        experienceService = new VelocityExperienceService();
+        proxy.getScheduler().buildTask(this, this::updateAllPartiesHud).repeat(Duration.ofSeconds(2)).schedule();
 
         games.set(nextGames);
         servers.set(nextServers);
@@ -1835,4 +1853,37 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public void addPartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.add(listener); }
     @Override public void removePartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.remove(listener); }
     public RematchService rematchService() { return rematchService; }
+    public VelocityExperienceService experienceService() { return experienceService; }
+
+    public void updatePartyHud(Player player, PartySnapshot party) {
+        if (experienceService == null) return;
+        boolean isLeader = party.leader().equals(player.getUniqueId());
+        String roleStr = isLeader ? "§6★ Líder" : "§7• Membro";
+        long online = party.memberIds().stream()
+                .filter(id -> proxy.getPlayer(id).map(Player::isActive).orElse(false))
+                .count();
+        String statusStr = switch (party.state()) {
+            case IDLE -> "§aLobby";
+            case QUEUED -> "§eNa Fila";
+            case ASSIGNED -> "§bConectando";
+            case IN_MATCH -> "§cEm Partida";
+            case DISBANDING -> "§7Dissolvida";
+        };
+
+        Component actionbar = Component.text("§eParty: ")
+                .append(Component.text(roleStr))
+                .append(Component.text(" §8| §7Membros: §f" + online + "/" + party.size()))
+                .append(Component.text(" §8| §7Status: " + statusStr));
+
+        experienceService.sendActionBar(player, actionbar);
+    }
+
+    public void updateAllPartiesHud() {
+        if (partyService == null || experienceService == null) return;
+        for (PartySnapshot party : partyService.activeParties()) {
+            for (UUID memberId : party.memberIds()) {
+                proxy.getPlayer(memberId).ifPresent(p -> updatePartyHud(p, party));
+            }
+        }
+    }
 }

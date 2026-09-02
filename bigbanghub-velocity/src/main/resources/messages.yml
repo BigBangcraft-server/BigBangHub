@@ -1,1 +1,66 @@
 messages: {}
+
+experience:
+  sound-enabled: true
+  title-enabled: true
+  actionbar-enabled: true
+
+  match-found:
+    title: "§a§lPARTIDA ENCONTRADA!"
+    subtitle: "§fConectando ao servidor em instantes..."
+    sound: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.0
+
+  reconnect-available:
+    title: "§e§lPARTIDA EM ANDAMENTO"
+    subtitle: "§7Clique no chat ou use §a/reconnect"
+    sound: "block.note_block.pling"
+    volume: 1.0
+    pitch: 1.2
+
+  rematch-offered:
+    title: "§b§lVOTO DE REVANCHE"
+    subtitle: "§7Um jogador votou por revanche!"
+    sound: "block.note_block.bell"
+    volume: 1.0
+    pitch: 1.0
+
+  rematch-consensus:
+    title: "§a§lREVANCHE ACEITA!"
+    subtitle: "§fPreparando nova rodada..."
+    sound: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.5
+
+  party-invite-received:
+    title: "§b§lCONVITE DE PARTY"
+    subtitle: "§f{player} convidou você para o grupo!"
+    sound: "entity.experience_orb.pickup"
+    volume: 1.0
+    pitch: 1.0
+
+  party-disbanded:
+    title: "§c§lPARTY DISSOLVIDA"
+    subtitle: "§7O líder desfez o grupo."
+    sound: "entity.villager.no"
+    volume: 1.0
+    pitch: 0.8
+
+  party-kicked:
+    title: "§c§lVOCÊ FOI REMOVIDO"
+    subtitle: "§7Você foi expulso da party."
+    sound: "entity.villager.no"
+    volume: 1.0
+    pitch: 0.8
+
+party-hud:
+  actionbar-format: "§eParty: {role} §8| §7Membros: §f{members_online}/{members_total} §8| §7Status: {status}"
+  leader-role: "§6★ Líder"
+  member-role: "§7• Membro"
+  status:
+    idle: "§aLobby"
+    queued: "§eNa Fila"
+    assigned: "§bConectando"
+    in-match: "§cEm Partida"
+    disbanding: "§7Dissolvida"

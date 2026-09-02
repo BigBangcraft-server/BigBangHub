@@ -26,14 +26,18 @@ import java.util.Optional;
 import java.util.UUID;
 
 final class VelocityPartyCommand implements SimpleCommand {
+    private final BigBangHubVelocityPlugin plugin;
     private final PartyService parties;
     private final ProxyServer proxy;
 
     VelocityPartyCommand(BigBangHubVelocityPlugin plugin) {
-        this(plugin.parties(), plugin.proxyServer());
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
+        this.parties = plugin.parties();
+        this.proxy = plugin.proxyServer();
     }
 
     VelocityPartyCommand(PartyService parties, ProxyServer proxy) {
+        this.plugin = null;
         this.parties = Objects.requireNonNull(parties, "parties");
         this.proxy = Objects.requireNonNull(proxy, "proxy");
     }
@@ -168,6 +172,9 @@ final class VelocityPartyCommand implements SimpleCommand {
                     .append(Component.text("\n§b§m----------------------------------------"))
                     .build();
             target.sendMessage(inviteMessage);
+            if (plugin != null && plugin.experienceService() != null) {
+                plugin.experienceService().notifyPartyInvite(target, player.getUsername());
+            }
         } catch (PartyException ex) {
             player.sendPlainMessage("§c" + formatPartyError(ex));
         }
@@ -314,6 +321,9 @@ final class VelocityPartyCommand implements SimpleCommand {
             player.sendPlainMessage("§aVocê expulsou §f" + targetName + " §ada party.");
             if (targetPlayer != null && targetPlayer.isActive()) {
                 targetPlayer.sendPlainMessage("§cVocê foi expulso da party.");
+                if (plugin != null && plugin.experienceService() != null) {
+                    plugin.experienceService().notifyPartyKick(targetPlayer);
+                }
             }
             broadcastToParty(partyAfter, "§e" + targetName + " §cfoi expulso da party.", player.getUniqueId());
         } catch (PartyException ex) {
@@ -378,6 +388,15 @@ final class VelocityPartyCommand implements SimpleCommand {
         PartySnapshot party = partyOpt.get();
         try {
             broadcastToParty(party, "§c§lPARTY §8» §cA party foi desfeita pelo líder.", null);
+            for (UUID mId : party.memberIds()) {
+                if (!mId.equals(player.getUniqueId())) {
+                    proxy.getPlayer(mId).ifPresent(m -> {
+                        if (plugin != null && plugin.experienceService() != null) {
+                            plugin.experienceService().notifyPartyDisband(m);
+                        }
+                    });
+                }
+            }
             parties.disbandParty(player.getUniqueId(), party.partyId());
         } catch (PartyException ex) {
             player.sendPlainMessage("§c" + formatPartyError(ex));

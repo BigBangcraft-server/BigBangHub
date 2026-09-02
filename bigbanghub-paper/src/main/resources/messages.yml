@@ -5,3 +5,27 @@ messages:
   console-command-disabled: '<red>Esta ação administrativa está desabilitada.</red>'
   console-command-denied: '<red>Comando não permitido.</red>'
   permission-denied: '<red>Você não tem permissão.</red>'
+
+experience:
+  sound-enabled: true
+  title-enabled: true
+  actionbar-enabled: true
+
+  match-found:
+    title: "<green><bold>PARTIDA ENCONTRADA!</bold></green>"
+    subtitle: "<white>Conectando ao servidor em instantes...</white>"
+    sound: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.0
+
+  party-leader-only-queue: "<red>Apenas o líder da party pode entrar na fila.</red>"
+
+party-hud:
+  actionbar-format: "<yellow>Party: {role} <dark_gray>|</dark_gray> <gray>Membros: <white>{members_online}/{members_total}</white> <dark_gray>|</dark_gray> Status: {status}</yellow>"
+  leader-role: "<gold>★ Líder</gold>"
+  member-role: "<gray>• Membro</gray>"
+  status:
+    idle: "<green>Lobby</green>"
+    queued: "<yellow>Na Fila</yellow>"
+    assigned: "<aqua>Conectando</aqua>"
+    in-match: "<red>Em Partida</red>"

@@ -70,6 +70,16 @@ final class ActionExecutor {
     }
 
     private void joinQueue(Player player, GameId gameId) {
+        if (plugin.parties() != null) {
+            java.util.Optional<com.bigbangcraft.hub.api.PartySnapshot> partyOpt = plugin.parties().partyOf(player.getUniqueId());
+            if (partyOpt.isPresent()) {
+                com.bigbangcraft.hub.api.PartySnapshot party = partyOpt.get();
+                if (!party.leader().equals(player.getUniqueId())) {
+                    player.sendMessage(miniMessage.deserialize("<red>Apenas o líder da party pode entrar na fila.</red>"));
+                    return;
+                }
+            }
+        }
         if (!plugin.games().find(gameId).map(game -> game.enabled() && game.queueEnabled()).orElse(false)) {
             player.sendMessage(message("game-unavailable", "<red>Este minigame está temporariamente indisponível.</red>"));
             return;

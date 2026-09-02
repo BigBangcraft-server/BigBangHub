@@ -59,11 +59,16 @@ public final class InstanceAwareRoutingService implements RoutingService {
 
     @Override
     public Optional<InstanceSnapshot> selectInstance(GameId gameId) {
+        return selectInstance(gameId, 1);
+    }
+
+    public Optional<InstanceSnapshot> selectInstance(GameId gameId, int requiredCapacity) {
         GameDefinition game = games.find(Objects.requireNonNull(gameId, "gameId")).orElse(null);
         if (game == null || !game.enabled() || !game.queueEnabled()) return Optional.empty();
 
         List<InstanceSnapshot> eligible = instances.instancesForGame(gameId).stream()
                 .filter(InstanceSnapshot::canAcceptPlayers)
+                .filter(inst -> inst.effectiveCapacity() >= requiredCapacity)
                 .filter(inst -> inst.state() == GameState.WAITING)
                 .toList();
 

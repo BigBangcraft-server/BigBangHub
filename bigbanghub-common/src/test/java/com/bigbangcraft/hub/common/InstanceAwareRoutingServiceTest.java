@@ -101,4 +101,25 @@ class InstanceAwareRoutingServiceTest {
         assertTrue(selected.isPresent());
         assertEquals(cm2, selected.get().instanceId()); // Picked 2/10 instead of 6/10
     }
+
+    @Test
+    void selectInstanceRespectsRequiredCapacityForParties() {
+        ServerId cm1 = ServerId.of("campominado-01");
+        ServerId cm2 = ServerId.of("campominado-02");
+        Instant now = Instant.now();
+
+        // cm1: 8/10 (2 slots available)
+        instanceRegistry.register(new MessagePayloads.InstanceRegister(cm1, gameId, "cm-01", UUID.randomUUID(), MessagePayloads.GameStateWire.WAITING, 8, 2, 10, true), 0L, now);
+        // cm2: 3/10 (7 slots available)
+        instanceRegistry.register(new MessagePayloads.InstanceRegister(cm2, gameId, "cm-02", UUID.randomUUID(), MessagePayloads.GameStateWire.WAITING, 3, 2, 10, true), 0L, now);
+
+        // A party of 4 requires 4 slots. cm1 only has 2, so it MUST pick cm2!
+        Optional<InstanceSnapshot> partyTarget = routingService.selectInstance(gameId, 4);
+        assertTrue(partyTarget.isPresent());
+        assertEquals(cm2, partyTarget.get().instanceId());
+
+        // A party of 8 requires 8 slots. Neither instance has 8 slots, so none selected (cannot split party!)
+        Optional<InstanceSnapshot> bigPartyTarget = routingService.selectInstance(gameId, 8);
+        assertTrue(bigPartyTarget.isEmpty());
+    }
 }

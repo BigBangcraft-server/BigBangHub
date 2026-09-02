@@ -119,11 +119,11 @@ final class VelocityCommands implements SimpleCommand {
             }
             case "leave" -> {
                 if (!player.hasPermission("bigbanghub.queue.leave")) { deny(player); return; }
-                plugin.queues().leave(player.getUniqueId()).thenAccept(result -> player.sendPlainMessage(result.message()));
+                plugin.leave(player);
             }
             case "status" -> {
                 if (!player.hasPermission("bigbanghub.queue.status")) { deny(player); return; }
-                plugin.queues().status(player.getUniqueId()).thenAccept(status -> {
+                plugin.queueStatus(player.getUniqueId()).thenAccept(status -> {
                     if (status.game().isEmpty()) player.sendPlainMessage("Você não está em uma fila.");
                     else player.sendPlainMessage("Fila: " + status.game().orElseThrow() + " | posição: "
                             + status.position() + "/" + status.size());

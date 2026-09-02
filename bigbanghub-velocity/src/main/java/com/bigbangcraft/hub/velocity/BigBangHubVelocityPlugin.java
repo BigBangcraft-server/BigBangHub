@@ -35,11 +35,13 @@ import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.PartyInvite;
 import com.bigbangcraft.hub.api.PartyService;
 import com.bigbangcraft.hub.api.PartySnapshot;
+import com.bigbangcraft.hub.api.PartyState;
 import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerTransferService;
 import com.bigbangcraft.hub.api.QueueEvent;
 import com.bigbangcraft.hub.api.QueueResult;
 import com.bigbangcraft.hub.api.QueueService;
+import com.bigbangcraft.hub.api.QueueStatus;
 import com.bigbangcraft.hub.api.Reservation;
 import com.bigbangcraft.hub.api.ReturnReason;
 import com.bigbangcraft.hub.api.RoutingService;
@@ -99,6 +101,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -109,6 +112,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -212,7 +216,21 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         UUID playerId = event.getPlayer().getUniqueId();
         lastRequestNanos.remove(playerId);
         inFlightTransfers.remove(playerId);
-        if (partyService != null) partyService.handlePlayerDisconnect(playerId);
+        if (partyService != null) {
+            partyService.partyOf(playerId).ifPresent(party -> {
+                if (party.state() == PartyState.QUEUED) {
+                    queues.leave(party.leader());
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                    for (UUID memberId : party.memberIds()) {
+                        if (!memberId.equals(playerId)) {
+                            proxy.getPlayer(memberId).ifPresent(p ->
+                                    p.sendPlainMessage("A party saiu da fila pois um membro desconectou."));
+                        }
+                    }
+                }
+            });
+            partyService.handlePlayerDisconnect(playerId);
+        }
         if (queues != null) queues.removePlayer(playerId);
         if (reservationService != null) reservationService.cancel(playerId, "player disconnected");
         if (ticketService != null) ticketService.invalidateForPlayer(playerId);
@@ -506,6 +524,14 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                     req.ticketId(), req.playerId(), req.matchId(), req.instanceId(), req.token(), now);
             MatchParticipant participant = matchRegistry.admitPlayer(ticket, now);
 
+            if (partyService != null) {
+                partyService.partyOf(req.playerId()).ifPresent(party -> {
+                    if (party.state() == PartyState.ASSIGNED) {
+                        partyService.transitionState(party.partyId(), PartyState.IN_MATCH);
+                    }
+                });
+            }
+
             admissionsAcceptedCount.incrementAndGet();
             MessagePayloads.ParticipantRoleWire roleWire = (ticket.role() == ParticipantRole.SPECTATOR)
                     ? MessagePayloads.ParticipantRoleWire.SPECTATOR : MessagePayloads.ParticipantRoleWire.PLAYER;
@@ -644,6 +670,14 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         Player player = proxy.getPlayer(playerId).orElse(null);
         if (player == null || !player.isActive()) return;
 
+        if (partyService != null) {
+            partyService.partyOf(playerId).ifPresent(party -> {
+                if (party.state() == PartyState.IN_MATCH || party.state() == PartyState.ASSIGNED) {
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                }
+            });
+        }
+
         RegisteredServer hubServer = proxy.getServer(hubName).orElse(null);
         if (hubServer == null) {
             returnFailuresCount.incrementAndGet();
@@ -687,11 +721,38 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 break;
             }
 
+            Optional<PartySnapshot> partyOpt = (partyService != null) ? partyService.partyOf(playerId) : Optional.empty();
+            List<UUID> groupMembers;
+            PartySnapshot party = null;
+
+            if (partyOpt.isPresent()) {
+                party = partyOpt.get();
+                boolean allReady = true;
+                for (UUID memberId : party.memberIds()) {
+                    Player m = proxy.getPlayer(memberId).orElse(null);
+                    if (m == null || !m.isActive() || inFlightTransfers.contains(memberId)) {
+                        allReady = false;
+                        break;
+                    }
+                }
+                if (!allReady) {
+                    break;
+                }
+                groupMembers = new ArrayList<>(party.memberIds());
+            } else {
+                groupMembers = List.of(playerId);
+            }
+
+            int groupSize = groupMembers.size();
+
             // Route to active MatchSession first (preferring FILL_EXISTING_MATCH)
             Collection<MatchSnapshot> activeMatches = matchRegistry.activeMatchesForGame(gameId);
             MatchSnapshot targetMatch = activeMatches.stream()
                     .filter(MatchSnapshot::canAcceptParticipants)
-                    .filter(m -> instanceRegistry.find(m.instanceId()).map(InstanceSnapshot::canAcceptPlayers).orElse(false))
+                    .filter(m -> m.effectiveCapacity() >= groupSize)
+                    .filter(m -> instanceRegistry.find(m.instanceId())
+                            .map(inst -> inst.canAcceptPlayers() && inst.effectiveCapacity() >= groupSize)
+                            .orElse(false))
                     .max(Comparator.comparingInt(m -> m.participantCount() + m.pendingAdmissions()))
                     .orElse(null);
 
@@ -702,8 +763,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 targetInstanceId = targetMatch.instanceId();
                 targetMatchId = targetMatch.matchId();
             } else {
-                // Fallback: check if an instance exists with no active match
-                Optional<InstanceSnapshot> candidateInst = instanceRouting.selectInstance(gameId);
+                Optional<InstanceSnapshot> candidateInst = instanceRouting.selectInstance(gameId, groupSize);
                 if (candidateInst.isEmpty()) {
                     break;
                 }
@@ -716,54 +776,110 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             }
 
             Instant now = Instant.now();
-            Optional<Reservation> reservation = reservationService.reserve(
-                    targetInstanceId, playerId, gameId, now);
-            if (reservation.isEmpty()) {
+            List<Reservation> reservationsMade = new ArrayList<>(groupSize);
+            boolean allReservationsSucceeded = true;
+
+            for (UUID memberId : groupMembers) {
+                Optional<Reservation> res = reservationService.reserve(targetInstanceId, memberId, gameId, now);
+                if (res.isPresent()) {
+                    reservationsMade.add(res.get());
+                } else {
+                    allReservationsSucceeded = false;
+                    break;
+                }
+            }
+
+            if (!allReservationsSucceeded) {
+                for (Reservation res : reservationsMade) {
+                    reservationService.cancel(res.playerId(), "party atomic reservation rollback");
+                }
                 break;
             }
 
-            // If routing into existing match, reserve match admission slot
+            // If routing into existing match, reserve match admission slots
             if (targetMatchId != null) {
-                if (!matchRegistry.reserveAdmission(targetMatchId)) {
-                    reservationService.cancel(playerId, "match admission reservation failed");
+                int admissionsReserved = 0;
+                for (int i = 0; i < groupSize; i++) {
+                    if (matchRegistry.reserveAdmission(targetMatchId)) {
+                        admissionsReserved++;
+                    } else {
+                        break;
+                    }
+                }
+                if (admissionsReserved < groupSize) {
+                    for (int i = 0; i < admissionsReserved; i++) {
+                        matchRegistry.releasePendingAdmission(targetMatchId);
+                    }
+                    for (Reservation res : reservationsMade) {
+                        reservationService.cancel(res.playerId(), "party match admission rollback");
+                    }
                     break;
                 }
             }
 
             Duration admissionTtl = configSnapshot().match().admissionTimeout();
-            AdmissionTicket ticket = (targetMatchId != null)
-                    ? ticketService.issue(playerId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl)
-                    : null;
+            List<AdmissionTicket> tickets = new ArrayList<>(groupSize);
+            if (targetMatchId != null) {
+                for (UUID memberId : groupMembers) {
+                    tickets.add(ticketService.issue(memberId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl));
+                }
+            }
 
-            inFlightTransfers.add(playerId);
-            routingAttemptsCount.incrementAndGet();
+            for (UUID memberId : groupMembers) {
+                inFlightTransfers.add(memberId);
+            }
+            routingAttemptsCount.addAndGet(groupSize);
+
             QueueResult assigned = queues.assign(playerId, gameId, targetInstanceId);
             if (assigned.code() != QueueResult.Code.ASSIGNED) {
-                reservationService.cancel(playerId, "queue assign failed");
-                if (targetMatchId != null) matchRegistry.releasePendingAdmission(targetMatchId);
-                if (ticket != null) ticketService.invalidate(ticket.ticketId());
-                inFlightTransfers.remove(playerId);
+                for (Reservation res : reservationsMade) {
+                    reservationService.cancel(res.playerId(), "queue assign failed");
+                }
+                if (targetMatchId != null) {
+                    for (int i = 0; i < groupSize; i++) {
+                        matchRegistry.releasePendingAdmission(targetMatchId);
+                    }
+                }
+                for (AdmissionTicket ticket : tickets) {
+                    ticketService.invalidate(ticket.ticketId());
+                }
+                for (UUID memberId : groupMembers) {
+                    inFlightTransfers.remove(memberId);
+                }
                 break;
             }
 
-            player.sendPlainMessage("Partida encontrada no servidor " + targetInstanceId + "! Conectando...");
-            transfersInitiatedCount.incrementAndGet();
-            transfers.transfer(playerId, targetInstanceId).thenAccept(result -> {
-                if (!result.success()) {
-                    transfersFailedCount.incrementAndGet();
-                    routingFailuresCount.incrementAndGet();
-                    reservationService.cancel(playerId, "transfer connection failed");
-                    if (targetMatchId != null) matchRegistry.releasePendingAdmission(targetMatchId);
-                    if (ticket != null) ticketService.invalidate(ticket.ticketId());
-                    inFlightTransfers.remove(playerId);
-                    Player p = proxy.getPlayer(playerId).orElse(null);
-                    if (p != null && p.isActive()) {
-                        queues.join(playerId, gameId);
-                        p.sendPlainMessage("Falha ao conectar à partida. Você retornou à fila.");
-                        dispatchQueue(gameId);
+            if (party != null) {
+                partyService.transitionState(party.partyId(), PartyState.ASSIGNED);
+            }
+
+            final PartySnapshot finalParty = party;
+            final MatchId finalTargetMatchId = targetMatchId;
+
+            for (UUID memberId : groupMembers) {
+                Player member = proxy.getPlayer(memberId).orElse(null);
+                if (member != null) {
+                    if (finalParty != null) {
+                        member.sendPlainMessage("Partida encontrada no servidor " + targetInstanceId + "! Conectando com sua party...");
+                    } else {
+                        member.sendPlainMessage("Partida encontrada no servidor " + targetInstanceId + "! Conectando...");
                     }
                 }
-            });
+                transfersInitiatedCount.incrementAndGet();
+                transfers.transfer(memberId, targetInstanceId).thenAccept(result -> {
+                    if (!result.success()) {
+                        transfersFailedCount.incrementAndGet();
+                        routingFailuresCount.incrementAndGet();
+                        reservationService.cancel(memberId, "transfer connection failed");
+                        if (finalTargetMatchId != null) matchRegistry.releasePendingAdmission(finalTargetMatchId);
+                        inFlightTransfers.remove(memberId);
+                        Player p = proxy.getPlayer(memberId).orElse(null);
+                        if (p != null && p.isActive()) {
+                            p.sendPlainMessage("Falha ao conectar à partida.");
+                        }
+                    }
+                });
+            }
         }
     }
 
@@ -871,13 +987,88 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         }
     }
 
+    record QueueValidation(boolean allowed, String message, PartySnapshot party) { }
+
+    private QueueValidation validateQueueJoin(UUID playerId, GameId gameId) {
+        if (!games().find(gameId).map(g -> g.enabled() && g.queueEnabled()).orElse(false)) {
+            return new QueueValidation(false, "Este minigame está temporariamente indisponível.", null);
+        }
+        if (partyService != null) {
+            Optional<PartySnapshot> partyOpt = partyService.partyOf(playerId);
+            if (partyOpt.isPresent()) {
+                PartySnapshot party = partyOpt.get();
+                if (!party.isLeader(playerId)) {
+                    return new QueueValidation(false, "Apenas o líder pode colocar o grupo na fila.", null);
+                }
+                if (party.state() != PartyState.IDLE) {
+                    return new QueueValidation(false, "A party já está em uma fila ou partida.", null);
+                }
+                for (UUID memberId : party.memberIds()) {
+                    Player m = proxy.getPlayer(memberId).orElse(null);
+                    if (m == null || !m.isActive()) {
+                        return new QueueValidation(false, "Não é possível entrar na fila: todos os membros da party devem estar online.", null);
+                    }
+                    if (inFlightTransfers.contains(memberId) || matchRegistry.findActiveForPlayer(memberId).isPresent()) {
+                        return new QueueValidation(false, "Não é possível entrar na fila: há membros da party em partida ou transição.", null);
+                    }
+                }
+                return new QueueValidation(true, "OK", party);
+            }
+        }
+        return new QueueValidation(true, "OK", null);
+    }
+
     void join(Player player, GameId game) {
+        QueueValidation validation = validateQueueJoin(player.getUniqueId(), game);
+        if (!validation.allowed()) {
+            player.sendPlainMessage(validation.message());
+            return;
+        }
+
         queues.join(player.getUniqueId(), game).thenAccept(result -> {
             player.sendPlainMessage(result.message());
             if (result.code() == QueueResult.Code.JOINED || result.code() == QueueResult.Code.ALREADY_QUEUED) {
+                if (validation.party() != null) {
+                    partyService.transitionState(validation.party().partyId(), PartyState.QUEUED);
+                    for (UUID memberId : validation.party().memberIds()) {
+                        if (!memberId.equals(player.getUniqueId())) {
+                            proxy.getPlayer(memberId).ifPresent(p ->
+                                    p.sendPlainMessage("Sua party entrou na fila para " + game.value() + "."));
+                        }
+                    }
+                }
                 dispatchQueue(game);
             }
         });
+    }
+
+    void leave(Player player) {
+        Optional<PartySnapshot> partyOpt = (partyService != null) ? partyService.partyOf(player.getUniqueId()) : Optional.empty();
+        if (partyOpt.isPresent()) {
+            PartySnapshot party = partyOpt.get();
+            if (party.state() == PartyState.QUEUED) {
+                if (!party.isLeader(player.getUniqueId())) {
+                    player.sendPlainMessage("Apenas o líder pode retirar a party da fila.");
+                    return;
+                }
+                partyService.transitionState(party.partyId(), PartyState.IDLE);
+                for (UUID memberId : party.memberIds()) {
+                    if (!memberId.equals(player.getUniqueId())) {
+                        proxy.getPlayer(memberId).ifPresent(p ->
+                                p.sendPlainMessage("Sua party saiu da fila."));
+                    }
+                }
+            }
+        }
+        queues.leave(player.getUniqueId()).thenAccept(result -> player.sendPlainMessage(result.message()));
+    }
+
+    CompletionStage<QueueStatus> queueStatus(UUID playerId) {
+        Optional<PartySnapshot> partyOpt = (partyService != null) ? partyService.partyOf(playerId) : Optional.empty();
+        if (partyOpt.isPresent() && partyOpt.get().state() == PartyState.QUEUED) {
+            return queues.status(partyOpt.get().leader());
+        }
+        return queues.status(playerId);
     }
 
     private void handle(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
@@ -1062,15 +1253,24 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         try {
             MessagePayloads.QueueJoin request = MessagePayloads.queueJoin(envelope.payload());
             if (!player.getUniqueId().equals(request.playerId())) { rejectIdentity(connection, envelope, player); return; }
-            if (!games().find(request.gameId()).map(game -> game.enabled() && game.queueEnabled()).orElse(false)) {
+            QueueValidation validation = validateQueueJoin(player.getUniqueId(), request.gameId());
+            if (!validation.allowed()) {
                 sendQueueResponse(connection, envelope, QueueResult.of(
-                        QueueResult.Code.UNAVAILABLE, request.gameId(), 0, 0,
-                        "Este minigame está temporariamente indisponível."), player.getUniqueId());
+                        QueueResult.Code.ERROR, request.gameId(), 0, 0, validation.message()), player.getUniqueId());
                 return;
             }
             queues.join(player.getUniqueId(), request.gameId()).thenAccept(result -> {
                 sendQueueResponse(connection, envelope, result, player.getUniqueId());
                 if (result.code() == QueueResult.Code.JOINED || result.code() == QueueResult.Code.ALREADY_QUEUED) {
+                    if (validation.party() != null) {
+                        partyService.transitionState(validation.party().partyId(), PartyState.QUEUED);
+                        for (UUID memberId : validation.party().memberIds()) {
+                            if (!memberId.equals(player.getUniqueId())) {
+                                proxy.getPlayer(memberId).ifPresent(p ->
+                                        p.sendPlainMessage("Sua party entrou na fila para " + request.gameId().value() + "."));
+                            }
+                        }
+                    }
                     dispatchQueue(request.gameId());
                 }
             });
@@ -1081,6 +1281,24 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         try {
             MessagePayloads.PlayerRequest request = MessagePayloads.playerRequest(envelope.payload());
             if (!player.getUniqueId().equals(request.playerId())) { rejectIdentity(connection, envelope, player); return; }
+            Optional<PartySnapshot> partyOpt = (partyService != null) ? partyService.partyOf(player.getUniqueId()) : Optional.empty();
+            if (partyOpt.isPresent()) {
+                PartySnapshot party = partyOpt.get();
+                if (party.state() == PartyState.QUEUED) {
+                    if (!party.isLeader(player.getUniqueId())) {
+                        sendQueueResponse(connection, envelope, QueueResult.of(QueueResult.Code.ERROR, null, 0, 0,
+                                "Apenas o líder pode retirar a party da fila."), player.getUniqueId());
+                        return;
+                    }
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                    for (UUID memberId : party.memberIds()) {
+                        if (!memberId.equals(player.getUniqueId())) {
+                            proxy.getPlayer(memberId).ifPresent(p ->
+                                    p.sendPlainMessage("Sua party saiu da fila."));
+                        }
+                    }
+                }
+            }
             queues.leave(player.getUniqueId()).thenAccept(result -> sendQueueResponse(connection, envelope, result, player.getUniqueId()));
         } catch (ProtocolValidationException exception) { logger.warn("Invalid queue leave payload: {}", exception.getMessage()); }
     }
@@ -1089,7 +1307,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         try {
             MessagePayloads.PlayerRequest request = MessagePayloads.playerRequest(envelope.payload());
             if (!player.getUniqueId().equals(request.playerId())) { rejectIdentity(connection, envelope, player); return; }
-            queues.status(player.getUniqueId()).thenAccept(status -> sendQueueResponse(connection, envelope,
+            queueStatus(player.getUniqueId()).thenAccept(status -> sendQueueResponse(connection, envelope,
                     QueueResult.of(QueueResult.Code.JOINED,
                             status.game().orElse(null), status.position(), status.size(),
                             status.game().isPresent() ? "Fila consultada." : "Você não está em uma fila."), player.getUniqueId()));
@@ -1156,7 +1374,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         return previous == null || now - previous >= 100_000_000L;
     }
 
-    private void install(HubConfigSnapshot snapshot) throws ConfigException, IOException {
+    void install(HubConfigSnapshot snapshot) throws ConfigException, IOException {
         GameRegistry nextGames = new InMemoryGameRegistry(snapshot.games());
         ServerRegistry nextServers = new InMemoryServerRegistry(snapshot.servers());
         ensureConfiguredServers(snapshot, true);

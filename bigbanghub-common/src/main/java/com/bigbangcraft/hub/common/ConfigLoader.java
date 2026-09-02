@@ -393,8 +393,10 @@ public final class ConfigLoader {
         Duration returnTimeout = duration(match, "return-timeout", Duration.ofSeconds(10), "match.return-timeout");
         Duration finishedRetention = duration(match, "finished-retention", Duration.ofSeconds(60), "match.finished-retention");
         boolean autoCreate = bool(match, "auto-create-match", true);
+        Duration reconnectTimeout = duration(match, "reconnect-timeout", Duration.ofSeconds(60), "match.reconnect-timeout");
+        boolean autoReconnect = bool(match, "auto-reconnect", true);
         try {
-            return new MatchSettings(admissionTimeout, returnTimeout, finishedRetention, autoCreate);
+            return new MatchSettings(admissionTimeout, returnTimeout, finishedRetention, autoCreate, reconnectTimeout, autoReconnect);
         } catch (IllegalArgumentException exception) {
             throw new ConfigException("Invalid match configuration: " + exception.getMessage(), exception);
         }

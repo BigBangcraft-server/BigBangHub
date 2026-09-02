@@ -49,6 +49,11 @@ public final class AdmissionTicketService {
 
     public synchronized AdmissionTicket issue(
             UUID playerId, MatchId matchId, ServerId instanceId, ParticipantRole role, Instant now, Duration ttl, Optional<PartyId> partyId) {
+        return issue(playerId, matchId, instanceId, role, now, ttl, partyId, false);
+    }
+
+    public synchronized AdmissionTicket issue(
+            UUID playerId, MatchId matchId, ServerId instanceId, ParticipantRole role, Instant now, Duration ttl, Optional<PartyId> partyId, boolean isReconnect) {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(matchId, "matchId");
         Objects.requireNonNull(instanceId, "instanceId");
@@ -68,7 +73,7 @@ public final class AdmissionTicketService {
         String token = HexFormat.of().formatHex(tokenBytes);
 
         AdmissionTicket ticket = new AdmissionTicket(
-                ticketId, playerId, matchId, instanceId, role, now, now.plus(ttl), token, partyId);
+                ticketId, playerId, matchId, instanceId, role, now, now.plus(ttl), token, partyId, isReconnect);
 
         ticketsById.put(ticketId, ticket);
         activeByPlayer.put(playerId, ticketId);

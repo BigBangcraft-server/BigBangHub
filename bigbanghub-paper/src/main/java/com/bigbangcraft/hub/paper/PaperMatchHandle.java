@@ -119,6 +119,14 @@ public final class PaperMatchHandle implements MatchHandle {
         participants.remove(playerId);
     }
 
+    public void setDisconnected(UUID playerId) {
+        MatchParticipant current = participants.get(playerId);
+        if (current != null) {
+            participants.put(playerId, new MatchParticipant(
+                    playerId, matchId, current.role(), ParticipantState.DISCONNECTED, current.joinedAt(), current.partyId()));
+        }
+    }
+
     @Override
     public CompletionStage<Void> open() {
         MatchState current = stateMachine.state();

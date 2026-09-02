@@ -7,12 +7,19 @@ public record MatchSettings(
         Duration admissionTimeout,
         Duration returnTimeout,
         Duration finishedRetention,
-        boolean autoCreateMatch) {
+        boolean autoCreateMatch,
+        Duration reconnectTimeout,
+        boolean autoReconnect) {
+
+    public MatchSettings(Duration admissionTimeout, Duration returnTimeout, Duration finishedRetention, boolean autoCreateMatch) {
+        this(admissionTimeout, returnTimeout, finishedRetention, autoCreateMatch, Duration.ofSeconds(60), true);
+    }
 
     public MatchSettings {
         Objects.requireNonNull(admissionTimeout, "admissionTimeout");
         Objects.requireNonNull(returnTimeout, "returnTimeout");
         Objects.requireNonNull(finishedRetention, "finishedRetention");
+        Objects.requireNonNull(reconnectTimeout, "reconnectTimeout");
         if (admissionTimeout.isNegative() || admissionTimeout.isZero()) {
             throw new IllegalArgumentException("admissionTimeout must be positive");
         }
@@ -22,12 +29,17 @@ public record MatchSettings(
         if (finishedRetention.isNegative() || finishedRetention.isZero()) {
             throw new IllegalArgumentException("finishedRetention must be positive");
         }
+        if (reconnectTimeout.isNegative()) {
+            throw new IllegalArgumentException("reconnectTimeout cannot be negative");
+        }
     }
 
     public static MatchSettings defaults() {
         return new MatchSettings(
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(10),
+                Duration.ofSeconds(60),
+                true,
                 Duration.ofSeconds(60),
                 true);
     }

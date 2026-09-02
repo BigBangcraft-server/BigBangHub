@@ -20,6 +20,7 @@ import com.bigbangcraft.hub.api.ParticipantRole;
 import com.bigbangcraft.hub.api.ParticipantState;
 import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerEliminatedEvent;
+import com.bigbangcraft.hub.api.PlayerReconnectedEvent;
 import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.ServerId;
 
@@ -104,7 +105,8 @@ public final class InMemoryMatchRegistry {
             int count = 0;
             for (MatchParticipant p : participants.values()) {
                 if (p.role() == ParticipantRole.PLAYER &&
-                        (p.state() == ParticipantState.ACTIVE || p.state() == ParticipantState.ADMITTED || p.state() == ParticipantState.RESERVED)) {
+                        (p.state() == ParticipantState.ACTIVE || p.state() == ParticipantState.ADMITTED
+                                || p.state() == ParticipantState.RESERVED || p.state() == ParticipantState.DISCONNECTED)) {
                     count++;
                 }
             }
@@ -141,12 +143,47 @@ public final class InMemoryMatchRegistry {
             pendingAdmissions.updateAndGet(current -> Math.max(0, current - 1));
         }
 
+        private final Map<UUID, Instant> disconnectedExpirations = new ConcurrentHashMap<>();
+
         public synchronized MatchParticipant admit(AdmissionTicket ticket, Instant now) {
-            pendingAdmissions.updateAndGet(current -> Math.max(0, current - 1));
+            if (!ticket.isReconnect()) {
+                pendingAdmissions.updateAndGet(current -> Math.max(0, current - 1));
+            }
+            MatchParticipant current = participants.get(ticket.playerId());
+            Instant joinedAt = (current != null) ? current.joinedAt() : now;
+            Optional<PartyId> partyId = ticket.partyId().isPresent() ? ticket.partyId() : (current != null ? current.partyId() : Optional.empty());
+            ParticipantRole role = (current != null) ? current.role() : ticket.role();
             MatchParticipant participant = new MatchParticipant(
-                    ticket.playerId(), matchId, ticket.role(), ParticipantState.ACTIVE, now, ticket.partyId());
+                    ticket.playerId(), matchId, role, ParticipantState.ACTIVE, joinedAt, partyId);
             participants.put(ticket.playerId(), participant);
+            disconnectedExpirations.remove(ticket.playerId());
             return participant;
+        }
+
+        public synchronized Optional<MatchParticipant> setDisconnected(UUID playerId, Instant expiresAt) {
+            MatchParticipant current = participants.get(playerId);
+            if (current == null || current.state() == ParticipantState.LEFT) {
+                return Optional.empty();
+            }
+            MatchParticipant updated = new MatchParticipant(
+                    current.playerId(), matchId, current.role(), ParticipantState.DISCONNECTED, current.joinedAt(), current.partyId());
+            participants.put(playerId, updated);
+            disconnectedExpirations.put(playerId, expiresAt);
+            return Optional.of(updated);
+        }
+
+        public synchronized List<UUID> sweepDisconnected(Instant now) {
+            List<UUID> expired = new ArrayList<>();
+            for (Map.Entry<UUID, Instant> entry : disconnectedExpirations.entrySet()) {
+                if (now.isAfter(entry.getValue()) || now.equals(entry.getValue())) {
+                    expired.add(entry.getKey());
+                }
+            }
+            for (UUID playerId : expired) {
+                disconnectedExpirations.remove(playerId);
+                removeParticipant(playerId);
+            }
+            return expired;
         }
 
         public synchronized Optional<MatchParticipant> eliminate(UUID playerId) {
@@ -330,16 +367,39 @@ public final class InMemoryMatchRegistry {
             }
         }
 
-        if (!session.stateMachine().canAcceptAdmissions(session.definition().allowLateJoin())) {
-            throw new MatchException(MatchException.ErrorCode.MATCH_LOCKED, "Match is not accepting admissions: " + session.stateMachine().state());
+        if (ticket.isReconnect()) {
+            if (session.stateMachine().isTerminal()) {
+                throw new MatchException(MatchException.ErrorCode.ALREADY_FINISHED,
+                        "Match is already terminal: " + session.stateMachine().state());
+            }
+        } else {
+            if (!session.stateMachine().canAcceptAdmissions(session.definition().allowLateJoin())) {
+                throw new MatchException(MatchException.ErrorCode.MATCH_LOCKED, "Match is not accepting admissions: " + session.stateMachine().state());
+            }
         }
 
         MatchParticipant participant = session.admit(ticket, now);
         activeByPlayer.put(ticket.playerId(), ticket.matchId());
 
         eventBus.publish(new PlayerAdmissionAcceptedEvent(ticket.matchId(), ticket.playerId(), ticket.role(), now));
-        eventBus.publish(new MatchParticipantJoinedEvent(participant, now));
+        if (ticket.isReconnect()) {
+            eventBus.publish(new PlayerReconnectedEvent(ticket.matchId(), ticket.playerId(), now));
+        } else {
+            eventBus.publish(new MatchParticipantJoinedEvent(participant, now));
+        }
         return participant;
+    }
+
+    public synchronized Optional<MatchParticipant> setPlayerDisconnected(MatchId matchId, UUID playerId, Instant expiresAt, Instant now) {
+        Objects.requireNonNull(matchId, "matchId");
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(expiresAt, "expiresAt");
+        Objects.requireNonNull(now, "now");
+
+        MatchSessionState session = matches.get(matchId);
+        if (session == null) return Optional.empty();
+
+        return session.setDisconnected(playerId, expiresAt);
     }
 
     public synchronized Optional<MatchParticipant> eliminatePlayer(MatchId matchId, UUID playerId, Instant now) {
@@ -510,6 +570,20 @@ public final class InMemoryMatchRegistry {
         return session != null ? Optional.of(session.snapshot()) : Optional.empty();
     }
 
+    public Optional<MatchParticipant> participant(MatchId matchId, UUID playerId) {
+        if (matchId == null || playerId == null) return Optional.empty();
+        MatchSessionState session = matches.get(matchId);
+        if (session == null) return Optional.empty();
+        return session.participant(playerId);
+    }
+
+    public Optional<MatchParticipant> participantOfPlayer(UUID playerId) {
+        if (playerId == null) return Optional.empty();
+        MatchId matchId = activeByPlayer.get(playerId);
+        if (matchId == null) return Optional.empty();
+        return participant(matchId, playerId);
+    }
+
     public Optional<MatchSnapshot> findActiveForPlayer(UUID playerId) {
         MatchId matchId = activeByPlayer.get(playerId);
         if (matchId == null) return Optional.empty();
@@ -540,6 +614,15 @@ public final class InMemoryMatchRegistry {
 
     public synchronized void sweepTombstones(Instant now) {
         tombstones.entrySet().removeIf(entry -> entry.getValue().isExpired(now));
+        for (MatchSessionState s : matches.values()) {
+            if (!s.stateMachine().isTerminal()) {
+                List<UUID> expiredPlayers = s.sweepDisconnected(now);
+                for (UUID pid : expiredPlayers) {
+                    activeByPlayer.remove(pid, s.matchId());
+                    eventBus.publish(new MatchParticipantLeftEvent(s.matchId(), pid, "reconnect expired", now));
+                }
+            }
+        }
         // Remove terminal matches older than retention from active memory map
         matches.entrySet().removeIf(entry -> {
             MatchSessionState s = entry.getValue();

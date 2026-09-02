@@ -24,6 +24,7 @@ import com.bigbangcraft.hub.common.InMemoryServerRegistry;
 import com.bigbangcraft.hub.common.InstanceAgentSettings;
 import com.bigbangcraft.hub.common.ProtocolCodec;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -72,6 +73,14 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
         getCommand("bbhub").setTabCompleter(new HubCommand(this));
         getCommand("party").setExecutor(new PartyCommand(this));
         getCommand("party").setTabCompleter(new PartyCommand(this));
+        if (getCommand("reconnect") != null) {
+            getCommand("reconnect").setExecutor((sender, cmd, label, args) -> {
+                if (sender instanceof Player p) {
+                    p.sendMessage("§eEncaminhando pedido de reconexão ao proxy...");
+                }
+                return true;
+            });
+        }
 
         if (snapshot.role() == ServerRole.HUB) {
             getCommand("queue").setExecutor(new QueueCommand(this));

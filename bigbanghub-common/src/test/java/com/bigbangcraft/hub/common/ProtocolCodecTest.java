@@ -7,7 +7,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProtocolCodecTest {
     @Test
@@ -203,5 +205,13 @@ class ProtocolCodecTest {
         byte[] bytesWithout = MessagePayloads.admissionResponse(withoutParty);
         MessagePayloads.AdmissionResponse decWithout = MessagePayloads.admissionResponse(bytesWithout);
         assertEquals(withoutParty, decWithout);
+        assertFalse(decWithout.isReconnect());
+
+        MessagePayloads.AdmissionResponse reconnectResp = new MessagePayloads.AdmissionResponse(
+                ticketId, playerId, matchId, true, MessagePayloads.ParticipantRoleWire.PLAYER, "Reconnected", java.util.Optional.of(partyId), true);
+        byte[] bytesReconnect = MessagePayloads.admissionResponse(reconnectResp);
+        MessagePayloads.AdmissionResponse decReconnect = MessagePayloads.admissionResponse(bytesReconnect);
+        assertEquals(reconnectResp, decReconnect);
+        assertTrue(decReconnect.isReconnect());
     }
 }

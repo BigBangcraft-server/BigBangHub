@@ -20,6 +20,14 @@ registry:
 routing:
   reservation-ttl: 10s
 
+match:
+  admission-timeout: 10s
+  return-timeout: 10s
+  finished-retention: 60s
+  auto-create-match: true
+  reconnect-timeout: 60s
+  auto-reconnect: true
+
 aliases: {}
 allow-console-commands: false
 console-command-allowlist: []

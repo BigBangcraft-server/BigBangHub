@@ -29,6 +29,7 @@ import com.bigbangcraft.hub.api.MatchSnapshot;
 import com.bigbangcraft.hub.api.MatchState;
 import com.bigbangcraft.hub.api.MatchStateChangedEvent;
 import com.bigbangcraft.hub.api.ParticipantRole;
+import com.bigbangcraft.hub.api.ParticipantState;
 import com.bigbangcraft.hub.api.PartyEvent;
 import com.bigbangcraft.hub.api.PartyException;
 import com.bigbangcraft.hub.api.PartyId;
@@ -191,6 +192,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("party").aliases("p").plugin(this).build(),
                     new VelocityPartyCommand(this));
+            proxy.getCommandManager().register(
+                    proxy.getCommandManager().metaBuilder("reconnect").plugin(this).build(),
+                    new VelocityReconnectCommand(this));
             logger.info("BigBangHub Velocity 0.3.0 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
@@ -236,7 +240,16 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         if (ticketService != null) ticketService.invalidateForPlayer(playerId);
         if (matchRegistry != null) {
             matchRegistry.findActiveForPlayer(playerId).ifPresent(match -> {
-                matchRegistry.removePlayer(match.matchId(), playerId, "player disconnected", Instant.now());
+                HubConfigSnapshot snapshot = configSnapshot();
+                Duration reconnectTimeout = snapshot.match().reconnectTimeout();
+                if (!match.state().isTerminal() && !reconnectTimeout.isZero() && !reconnectTimeout.isNegative()) {
+                    Instant expiresAt = Instant.now().plus(reconnectTimeout);
+                    matchRegistry.setPlayerDisconnected(match.matchId(), playerId, expiresAt, Instant.now());
+                    logger.info("Player {} disconnected from active match {}, holding slot until {}",
+                            playerId, match.matchId(), expiresAt);
+                } else {
+                    matchRegistry.removePlayer(match.matchId(), playerId, "player disconnected", Instant.now());
+                }
             });
         }
     }
@@ -256,6 +269,72 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             }
         }
         inFlightTransfers.remove(player.getUniqueId());
+
+        if (current.getServerInfo().getName().equals(configSnapshot().proxy().hubServerName())) {
+            checkAndHandleReconnect(player);
+        }
+    }
+
+    public Optional<MatchSnapshot> findPendingReconnect(UUID playerId) {
+        if (matchRegistry == null) return Optional.empty();
+        Optional<MatchSnapshot> active = matchRegistry.findActiveForPlayer(playerId);
+        if (active.isEmpty()) return Optional.empty();
+        MatchSnapshot snapshot = active.get();
+        if (snapshot.state().isTerminal()) return Optional.empty();
+        Optional<MatchParticipant> participant = matchRegistry.participant(snapshot.matchId(), playerId);
+        if (participant.isPresent() && participant.get().state() == ParticipantState.DISCONNECTED) {
+            return Optional.of(snapshot);
+        }
+        return Optional.empty();
+    }
+
+    public void checkAndHandleReconnect(Player player) {
+        Optional<MatchSnapshot> pending = findPendingReconnect(player.getUniqueId());
+        if (pending.isEmpty()) return;
+
+        HubConfigSnapshot snapshot = configSnapshot();
+        if (snapshot.match().autoReconnect()) {
+            player.sendPlainMessage("§a[BigBangHub] Partida em andamento encontrada! Reconectando...");
+            reconnectPlayer(player);
+        } else {
+            player.sendMessage(Component.text("§e[BigBangHub] Você possui uma partida em andamento! ")
+                    .append(Component.text("§a§l[CLIQUE AQUI PARA RECONECTAR]")
+                            .clickEvent(ClickEvent.runCommand("/reconnect"))
+                            .hoverEvent(HoverEvent.showText(Component.text("§7Reconectar à partida")))));
+        }
+    }
+
+    public boolean reconnectPlayer(Player player) {
+        Optional<MatchSnapshot> pending = findPendingReconnect(player.getUniqueId());
+        if (pending.isEmpty()) {
+            player.sendPlainMessage("§cVocê não possui nenhuma partida em andamento para reconectar.");
+            return false;
+        }
+
+        MatchSnapshot match = pending.get();
+        Optional<RegisteredServer> targetServer = proxy.getServer(match.instanceId().value());
+        if (targetServer.isEmpty()) {
+            player.sendPlainMessage("§cO servidor da sua partida não está mais disponível.");
+            return false;
+        }
+
+        Instant now = Instant.now();
+        Duration admissionTtl = configSnapshot().match().admissionTimeout();
+        Optional<PartyId> partyId = (partyService != null) ? partyService.partyOf(player.getUniqueId()).map(PartySnapshot::partyId) : Optional.empty();
+        MatchParticipant current = matchRegistry.participant(match.matchId(), player.getUniqueId()).orElseThrow();
+
+        AdmissionTicket ticket = ticketService.issue(
+                player.getUniqueId(), match.matchId(), match.instanceId(), current.role(), now, admissionTtl, partyId, true);
+
+        inFlightTransfers.add(player.getUniqueId());
+        player.createConnectionRequest(targetServer.get()).connect().thenAccept(result -> {
+            inFlightTransfers.remove(player.getUniqueId());
+            if (!result.isSuccessful()) {
+                ticketService.invalidateForPlayer(player.getUniqueId());
+                player.sendPlainMessage("§cFalha ao reconectar ao servidor da partida.");
+            }
+        });
+        return true;
     }
 
     @Subscribe
@@ -538,10 +617,12 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
                     MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(
-                            req.ticketId(), req.playerId(), req.matchId(), true, roleWire, "Admitted successfully", ticket.partyId()))));
+                            req.ticketId(), req.playerId(), req.matchId(), true, roleWire,
+                            ticket.isReconnect() ? "Reconnected successfully" : "Admitted successfully",
+                            ticket.partyId(), ticket.isReconnect()))));
 
-            logger.info("Player {} admitted into match {} on {} ({})",
-                    req.playerId(), req.matchId(), req.instanceId(), ticket.role());
+            logger.info("Player {} admitted into match {} on {} ({}, reconnect={})",
+                    req.playerId(), req.matchId(), req.instanceId(), ticket.role(), ticket.isReconnect());
         } catch (MatchException e) {
             admissionsRejectedCount.incrementAndGet();
             logger.warn("Admission rejected for ticket: {}", e.getMessage());
@@ -568,6 +649,10 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             switch (change.state()) {
                 case ELIMINATED -> matchRegistry.eliminatePlayer(change.matchId(), change.playerId(), now);
                 case SPECTATING -> matchRegistry.setPlayerSpectator(change.matchId(), change.playerId(), now);
+                case DISCONNECTED -> {
+                    Duration reconnectTimeout = configSnapshot().match().reconnectTimeout();
+                    matchRegistry.setPlayerDisconnected(change.matchId(), change.playerId(), now.plus(reconnectTimeout), now);
+                }
                 case LEFT -> matchRegistry.removePlayer(change.matchId(), change.playerId(), "left", now);
                 default -> { }
             }

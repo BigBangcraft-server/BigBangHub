@@ -52,10 +52,16 @@ public final class MessagePayloads {
                                   ServerId instanceId, String token) { }
     public record AdmissionResponse(UUID ticketId, UUID playerId, MatchId matchId,
                                     boolean accepted, ParticipantRoleWire role, String reason,
-                                    Optional<PartyId> partyId) {
+                                    Optional<PartyId> partyId, boolean isReconnect) {
         public AdmissionResponse(UUID ticketId, UUID playerId, MatchId matchId,
                                  boolean accepted, ParticipantRoleWire role, String reason) {
-            this(ticketId, playerId, matchId, accepted, role, reason, Optional.empty());
+            this(ticketId, playerId, matchId, accepted, role, reason, Optional.empty(), false);
+        }
+
+        public AdmissionResponse(UUID ticketId, UUID playerId, MatchId matchId,
+                                 boolean accepted, ParticipantRoleWire role, String reason,
+                                 Optional<PartyId> partyId) {
+            this(ticketId, playerId, matchId, accepted, role, reason, partyId, false);
         }
     }
     public record ParticipantStateChange(MatchId matchId, UUID playerId,
@@ -423,6 +429,7 @@ public final class MessagePayloads {
             if (response.partyId().isPresent()) {
                 uuid(out, response.partyId().get().value());
             }
+            out.writeBoolean(response.isReconnect());
         });
     }
 
@@ -441,7 +448,11 @@ public final class MessagePayloads {
                     partyId = Optional.of(PartyId.of(uuid(input)));
                 }
             }
-            return new AdmissionResponse(ticketId, playerId, matchId, accepted, ParticipantRoleWire.values()[roleOrd], reason, partyId);
+            boolean isReconnect = false;
+            if (input.available() > 0) {
+                isReconnect = input.readBoolean();
+            }
+            return new AdmissionResponse(ticketId, playerId, matchId, accepted, ParticipantRoleWire.values()[roleOrd], reason, partyId, isReconnect);
         }, "admission response");
     }
 

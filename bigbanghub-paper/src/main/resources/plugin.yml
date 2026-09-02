@@ -16,6 +16,9 @@ commands:
     description: Party management and group communication
     aliases: [p]
     usage: /party <invite|accept|decline|leave|kick|leader|disband|list>
+  reconnect:
+    description: Reconnect to an in-progress match
+    usage: /reconnect
 permissions:
   bigbanghub.admin:
     default: op

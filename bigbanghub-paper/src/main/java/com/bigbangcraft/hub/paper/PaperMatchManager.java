@@ -16,6 +16,7 @@ import com.bigbangcraft.hub.api.ParticipantRole;
 import com.bigbangcraft.hub.api.ParticipantState;
 import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerAdmissionRejectedEvent;
+import com.bigbangcraft.hub.api.PlayerReconnectedEvent;
 import com.bigbangcraft.hub.api.ReturnReason;
 import com.bigbangcraft.hub.api.ServerId;
 import com.bigbangcraft.hub.common.MatchEventBus;
@@ -183,9 +184,14 @@ public final class PaperMatchManager implements MatchManager {
                             MatchParticipant participant = new MatchParticipant(
                                     player.getUniqueId(), handle.matchId(), role, ParticipantState.ACTIVE, Instant.now(), response.partyId());
                             handle.addParticipant(participant);
-                            eventBus.publish(new PlayerAdmissionAcceptedEvent(handle.matchId(), player.getUniqueId(), role));
-                            eventBus.publish(new MatchParticipantJoinedEvent(participant));
-                            player.sendMessage("§aEntrada confirmada na partida " + handle.matchId().value().substring(0, 8) + "!");
+                            if (response.isReconnect()) {
+                                eventBus.publish(new PlayerReconnectedEvent(handle.matchId(), player.getUniqueId(), Instant.now()));
+                                player.sendMessage("§aReconexão confirmada na partida " + handle.matchId().value().substring(0, 8) + "!");
+                            } else {
+                                eventBus.publish(new PlayerAdmissionAcceptedEvent(handle.matchId(), player.getUniqueId(), role));
+                                eventBus.publish(new MatchParticipantJoinedEvent(participant));
+                                player.sendMessage("§aEntrada confirmada na partida " + handle.matchId().value().substring(0, 8) + "!");
+                            }
                         } else {
                             eventBus.publish(new PlayerAdmissionRejectedEvent(handle.matchId(), player.getUniqueId(), response.reason()));
                             player.sendMessage("§cEntrada direta não autorizada: " + response.reason() + ". Retornando ao Hub...");
@@ -206,12 +212,20 @@ public final class PaperMatchManager implements MatchManager {
     public void handlePlayerQuit(Player player) {
         PaperMatchHandle handle = currentMatch.get();
         if (handle != null) {
-            handle.removeParticipant(player.getUniqueId());
-            bridge.sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
-                    MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
-                            handle.matchId(), player.getUniqueId(),
-                            MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.LEFT)));
-            eventBus.publish(new MatchParticipantLeftEvent(handle.matchId(), player.getUniqueId(), "disconnected"));
+            if (!handle.state().isTerminal()) {
+                handle.setDisconnected(player.getUniqueId());
+                bridge.sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
+                        MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
+                                handle.matchId(), player.getUniqueId(),
+                                MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.DISCONNECTED)));
+            } else {
+                handle.removeParticipant(player.getUniqueId());
+                bridge.sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
+                        MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
+                                handle.matchId(), player.getUniqueId(),
+                                MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.LEFT)));
+                eventBus.publish(new MatchParticipantLeftEvent(handle.matchId(), player.getUniqueId(), "disconnected"));
+            }
         }
     }
 }

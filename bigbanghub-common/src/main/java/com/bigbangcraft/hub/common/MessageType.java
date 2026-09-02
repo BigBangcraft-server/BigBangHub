@@ -23,7 +23,17 @@ public enum MessageType {
     MATCH_FINISH(20),
     MATCH_ABORT(21),
     INSTANCE_READY(22),
-    PLAYER_RETURN(23);
+    PLAYER_RETURN(23),
+    PARTY_CREATE(24),
+    PARTY_INVITE(25),
+    PARTY_ACCEPT(26),
+    PARTY_DECLINE(27),
+    PARTY_LEAVE(28),
+    PARTY_KICK(29),
+    PARTY_LEADER_CHANGE(30),
+    PARTY_DISBAND(31),
+    PARTY_SYNC(32),
+    PARTY_RESPONSE(33);
 
     private final int code;
 

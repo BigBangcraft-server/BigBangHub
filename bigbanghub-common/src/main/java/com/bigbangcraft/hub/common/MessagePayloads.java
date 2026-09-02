@@ -2,6 +2,7 @@ package com.bigbangcraft.hub.common;
 
 import com.bigbangcraft.hub.api.GameId;
 import com.bigbangcraft.hub.api.MatchId;
+import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.QueueResult;
 import com.bigbangcraft.hub.api.ServerId;
 
@@ -61,12 +62,25 @@ public final class MessagePayloads {
     public record InstanceReady(ServerId instanceId, UUID sessionId, MatchId matchId) { }
     public record PlayerReturn(UUID playerId, ReturnReasonWire reason, String message) { }
 
+    // Party Lifecycle Payloads
+    public record PartyCreate(UUID leaderId) { }
+    public record PartyInvitePayload(UUID actorId, UUID targetId, String targetName) { }
+    public record PartyAcceptPayload(UUID playerId, Optional<PartyId> partyId) { }
+    public record PartyDeclinePayload(UUID playerId, Optional<PartyId> partyId) { }
+    public record PartyLeavePayload(UUID playerId) { }
+    public record PartyKickPayload(UUID actorId, UUID targetId) { }
+    public record PartyLeaderChangePayload(UUID actorId, UUID newLeaderId) { }
+    public record PartyDisbandPayload(UUID actorId, PartyId partyId) { }
+    public record PartySyncPayload(PartyId partyId, UUID leaderId, List<UUID> members, PartyStateWire state, long revision) { }
+    public record PartyResponsePayload(UUID playerId, boolean success, String message, Optional<PartyId> partyId) { }
+
     public enum GameStateWire { OFFLINE, STARTING, WAITING, STARTING_GAME, IN_GAME, ENDING, FULL, MAINTENANCE }
     public enum MatchStateWire { CREATED, WAITING, COUNTDOWN, LOCKED, IN_GAME, ENDING, FINISHED, ABORTED }
     public enum ParticipantRoleWire { PLAYER, SPECTATOR }
     public enum ParticipantStateWire { RESERVED, ADMITTED, ACTIVE, ELIMINATED, SPECTATING, LEAVING, LEFT, DISCONNECTED }
     public enum MatchResultOutcomeWire { WIN, DRAW, ABORTED }
     public enum ReturnReasonWire { MATCH_FINISHED, MATCH_ABORTED, PLAYER_ELIMINATED, PLAYER_LEFT, SERVER_FAILURE, ADMIN_FORCE_RETURN, DIRECT_JOIN_REJECTED }
+    public enum PartyStateWire { IDLE, QUEUED, ASSIGNED, IN_MATCH, DISBANDING }
 
     public static byte[] queueJoin(UUID playerId, GameId gameId) {
         return write(out -> { uuid(out, playerId); text(out, gameId.value()); });
@@ -527,6 +541,158 @@ public final class MessagePayloads {
             String message = text(input);
             return new PlayerReturn(playerId, ReturnReasonWire.values()[reasonOrd], message);
         }, "player return");
+    }
+
+    public static byte[] partyCreate(UUID leaderId) {
+        return write(out -> uuid(out, leaderId));
+    }
+
+    public static PartyCreate partyCreate(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyCreate(uuid(input)), "party create");
+    }
+
+    public static byte[] partyInvite(PartyInvitePayload invite) {
+        return write(out -> {
+            uuid(out, invite.actorId());
+            uuid(out, invite.targetId());
+            text(out, invite.targetName() != null ? invite.targetName() : "");
+        });
+    }
+
+    public static PartyInvitePayload partyInvite(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyInvitePayload(uuid(input), uuid(input), text(input)), "party invite");
+    }
+
+    public static byte[] partyAccept(PartyAcceptPayload accept) {
+        return write(out -> {
+            uuid(out, accept.playerId());
+            out.writeBoolean(accept.partyId().isPresent());
+            if (accept.partyId().isPresent()) {
+                uuid(out, accept.partyId().get().value());
+            }
+        });
+    }
+
+    public static PartyAcceptPayload partyAccept(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            UUID playerId = uuid(input);
+            boolean present = input.readBoolean();
+            Optional<PartyId> partyId = present ? Optional.of(PartyId.of(uuid(input))) : Optional.empty();
+            return new PartyAcceptPayload(playerId, partyId);
+        }, "party accept");
+    }
+
+    public static byte[] partyDecline(PartyDeclinePayload decline) {
+        return write(out -> {
+            uuid(out, decline.playerId());
+            out.writeBoolean(decline.partyId().isPresent());
+            if (decline.partyId().isPresent()) {
+                uuid(out, decline.partyId().get().value());
+            }
+        });
+    }
+
+    public static PartyDeclinePayload partyDecline(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            UUID playerId = uuid(input);
+            boolean present = input.readBoolean();
+            Optional<PartyId> partyId = present ? Optional.of(PartyId.of(uuid(input))) : Optional.empty();
+            return new PartyDeclinePayload(playerId, partyId);
+        }, "party decline");
+    }
+
+    public static byte[] partyLeave(UUID playerId) {
+        return write(out -> uuid(out, playerId));
+    }
+
+    public static PartyLeavePayload partyLeave(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyLeavePayload(uuid(input)), "party leave");
+    }
+
+    public static byte[] partyKick(PartyKickPayload kick) {
+        return write(out -> {
+            uuid(out, kick.actorId());
+            uuid(out, kick.targetId());
+        });
+    }
+
+    public static PartyKickPayload partyKick(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyKickPayload(uuid(input), uuid(input)), "party kick");
+    }
+
+    public static byte[] partyLeaderChange(PartyLeaderChangePayload change) {
+        return write(out -> {
+            uuid(out, change.actorId());
+            uuid(out, change.newLeaderId());
+        });
+    }
+
+    public static PartyLeaderChangePayload partyLeaderChange(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyLeaderChangePayload(uuid(input), uuid(input)), "party leader change");
+    }
+
+    public static byte[] partyDisband(PartyDisbandPayload disband) {
+        return write(out -> {
+            uuid(out, disband.actorId());
+            uuid(out, disband.partyId().value());
+        });
+    }
+
+    public static PartyDisbandPayload partyDisband(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyDisbandPayload(uuid(input), PartyId.of(uuid(input))), "party disband");
+    }
+
+    public static byte[] partySync(PartySyncPayload sync) {
+        return write(out -> {
+            uuid(out, sync.partyId().value());
+            uuid(out, sync.leaderId());
+            out.writeShort(sync.members().size());
+            for (UUID id : sync.members()) {
+                uuid(out, id);
+            }
+            out.writeByte(sync.state().ordinal());
+            out.writeLong(sync.revision());
+        });
+    }
+
+    public static PartySyncPayload partySync(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            PartyId partyId = PartyId.of(uuid(input));
+            UUID leaderId = uuid(input);
+            int count = input.readUnsignedShort();
+            if (count > 64) throw new IOException("Too many members in party sync");
+            List<UUID> members = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                members.add(uuid(input));
+            }
+            int stateOrd = input.readUnsignedByte();
+            if (stateOrd >= PartyStateWire.values().length) throw new IOException("Invalid party state wire");
+            long revision = input.readLong();
+            return new PartySyncPayload(partyId, leaderId, members, PartyStateWire.values()[stateOrd], revision);
+        }, "party sync");
+    }
+
+    public static byte[] partyResponse(PartyResponsePayload resp) {
+        return write(out -> {
+            uuid(out, resp.playerId());
+            out.writeBoolean(resp.success());
+            text(out, resp.message() != null ? resp.message() : "");
+            out.writeBoolean(resp.partyId().isPresent());
+            if (resp.partyId().isPresent()) {
+                uuid(out, resp.partyId().get().value());
+            }
+        });
+    }
+
+    public static PartyResponsePayload partyResponse(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            UUID playerId = uuid(input);
+            boolean success = input.readBoolean();
+            String message = text(input);
+            boolean present = input.readBoolean();
+            Optional<PartyId> partyId = present ? Optional.of(PartyId.of(uuid(input))) : Optional.empty();
+            return new PartyResponsePayload(playerId, success, message, partyId);
+        }, "party response");
     }
 
     private interface Writer { void write(DataOutputStream out) throws IOException; }

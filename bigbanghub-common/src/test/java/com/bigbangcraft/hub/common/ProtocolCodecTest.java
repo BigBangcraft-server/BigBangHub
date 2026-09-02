@@ -98,4 +98,83 @@ class ProtocolCodecTest {
         assertThrows(ProtocolValidationException.class, () ->
                 MessagePayloads.instanceRegister(new byte[]{0, 1, 'a'}));
     }
+
+    @Test
+    void roundTripsPartyLifecycleMessages() throws Exception {
+        ProtocolCodec codec = new ProtocolCodec(new byte[0], ProtocolCodec.MAX_PAYLOAD_BYTES, false);
+        UUID correlation = UUID.randomUUID();
+        UUID leaderId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        com.bigbangcraft.hub.api.PartyId partyId = com.bigbangcraft.hub.api.PartyId.random();
+
+        // 1. Party Create
+        byte[] createBytes = MessagePayloads.partyCreate(leaderId);
+        ProtocolEnvelope envCreate = new ProtocolEnvelope(1, MessageType.PARTY_CREATE, correlation, createBytes);
+        ProtocolEnvelope decCreate = codec.decode(codec.encode(envCreate));
+        assertEquals(leaderId, MessagePayloads.partyCreate(decCreate.payload()).leaderId());
+
+        // 2. Party Invite
+        MessagePayloads.PartyInvitePayload invite = new MessagePayloads.PartyInvitePayload(leaderId, targetId, "TargetPlayer");
+        byte[] inviteBytes = MessagePayloads.partyInvite(invite);
+        ProtocolEnvelope envInvite = new ProtocolEnvelope(1, MessageType.PARTY_INVITE, correlation, inviteBytes);
+        ProtocolEnvelope decInvite = codec.decode(codec.encode(envInvite));
+        assertEquals(invite, MessagePayloads.partyInvite(decInvite.payload()));
+
+        // 3. Party Accept
+        MessagePayloads.PartyAcceptPayload accept = new MessagePayloads.PartyAcceptPayload(targetId, java.util.Optional.of(partyId));
+        byte[] acceptBytes = MessagePayloads.partyAccept(accept);
+        ProtocolEnvelope envAccept = new ProtocolEnvelope(1, MessageType.PARTY_ACCEPT, correlation, acceptBytes);
+        ProtocolEnvelope decAccept = codec.decode(codec.encode(envAccept));
+        assertEquals(accept, MessagePayloads.partyAccept(decAccept.payload()));
+
+        // 4. Party Decline
+        MessagePayloads.PartyDeclinePayload decline = new MessagePayloads.PartyDeclinePayload(targetId, java.util.Optional.empty());
+        byte[] declineBytes = MessagePayloads.partyDecline(decline);
+        ProtocolEnvelope envDecline = new ProtocolEnvelope(1, MessageType.PARTY_DECLINE, correlation, declineBytes);
+        ProtocolEnvelope decDecline = codec.decode(codec.encode(envDecline));
+        assertEquals(decline, MessagePayloads.partyDecline(decDecline.payload()));
+
+        // 5. Party Leave
+        byte[] leaveBytes = MessagePayloads.partyLeave(targetId);
+        ProtocolEnvelope envLeave = new ProtocolEnvelope(1, MessageType.PARTY_LEAVE, correlation, leaveBytes);
+        ProtocolEnvelope decLeave = codec.decode(codec.encode(envLeave));
+        assertEquals(targetId, MessagePayloads.partyLeave(decLeave.payload()).playerId());
+
+        // 6. Party Kick
+        MessagePayloads.PartyKickPayload kick = new MessagePayloads.PartyKickPayload(leaderId, targetId);
+        byte[] kickBytes = MessagePayloads.partyKick(kick);
+        ProtocolEnvelope envKick = new ProtocolEnvelope(1, MessageType.PARTY_KICK, correlation, kickBytes);
+        ProtocolEnvelope decKick = codec.decode(codec.encode(envKick));
+        assertEquals(kick, MessagePayloads.partyKick(decKick.payload()));
+
+        // 7. Party Leader Change
+        MessagePayloads.PartyLeaderChangePayload plc = new MessagePayloads.PartyLeaderChangePayload(leaderId, targetId);
+        byte[] plcBytes = MessagePayloads.partyLeaderChange(plc);
+        ProtocolEnvelope envPlc = new ProtocolEnvelope(1, MessageType.PARTY_LEADER_CHANGE, correlation, plcBytes);
+        ProtocolEnvelope decPlc = codec.decode(codec.encode(envPlc));
+        assertEquals(plc, MessagePayloads.partyLeaderChange(decPlc.payload()));
+
+        // 8. Party Disband
+        MessagePayloads.PartyDisbandPayload disband = new MessagePayloads.PartyDisbandPayload(leaderId, partyId);
+        byte[] disbandBytes = MessagePayloads.partyDisband(disband);
+        ProtocolEnvelope envDisband = new ProtocolEnvelope(1, MessageType.PARTY_DISBAND, correlation, disbandBytes);
+        ProtocolEnvelope decDisband = codec.decode(codec.encode(envDisband));
+        assertEquals(disband, MessagePayloads.partyDisband(decDisband.payload()));
+
+        // 9. Party Sync
+        MessagePayloads.PartySyncPayload sync = new MessagePayloads.PartySyncPayload(
+                partyId, leaderId, java.util.List.of(leaderId, targetId), MessagePayloads.PartyStateWire.IDLE, 5L);
+        byte[] syncBytes = MessagePayloads.partySync(sync);
+        ProtocolEnvelope envSync = new ProtocolEnvelope(1, MessageType.PARTY_SYNC, correlation, syncBytes);
+        ProtocolEnvelope decSync = codec.decode(codec.encode(envSync));
+        assertEquals(sync, MessagePayloads.partySync(decSync.payload()));
+
+        // 10. Party Response
+        MessagePayloads.PartyResponsePayload resp = new MessagePayloads.PartyResponsePayload(
+                targetId, true, "Entrou na party", java.util.Optional.of(partyId));
+        byte[] respBytes = MessagePayloads.partyResponse(resp);
+        ProtocolEnvelope envResp = new ProtocolEnvelope(1, MessageType.PARTY_RESPONSE, correlation, respBytes);
+        ProtocolEnvelope decResp = codec.decode(codec.encode(envResp));
+        assertEquals(resp, MessagePayloads.partyResponse(decResp.payload()));
+    }
 }

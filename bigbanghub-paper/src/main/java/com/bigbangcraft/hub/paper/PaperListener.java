@@ -87,7 +87,7 @@ final class PaperListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onAlias(PlayerCommandPreprocessEvent event) {
         String[] tokens = event.getMessage().substring(1).trim().split("\\s+");
         if (tokens.length != 1) return;
@@ -98,9 +98,11 @@ final class PaperListener implements Listener {
         actions.execute(event.getPlayer(), new ActionDefinition(ActionType.QUEUE, game));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onCompass(PlayerInteractEvent event) {
         Action action = event.getAction();
+        // Authoritative BigBangHub lobby-item check must run regardless of prior cancellation
+        // and before any generic lobby protection cancels the interaction.
         if (plugin.menu().isCompass(event.getItem()) && (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK)) {
             event.setCancelled(true);
             plugin.menu().open(event.getPlayer());
@@ -180,7 +182,7 @@ final class PaperListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onEntityChange(EntityChangeBlockEvent event) { if (plugin.configSnapshot().protection().mobInteractions()) event.setCancelled(true); }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (plugin.menu().isMenu(event.getView().getTopInventory())) {

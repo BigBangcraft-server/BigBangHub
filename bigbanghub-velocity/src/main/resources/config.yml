@@ -29,6 +29,7 @@ match:
   auto-reconnect: true
   post-match-timeout: 15s
 
-aliases: {}
+aliases:
+  campominado: campominado
 allow-console-commands: false
 console-command-allowlist: []

@@ -120,7 +120,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.0", authors = {"BigBangCraft"})
+@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.1", authors = {"BigBangCraft"})
 public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final ProxyServer proxy;
     private final Logger logger;
@@ -169,6 +169,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private PartyEventBus partyEventBus;
     private RematchService rematchService;
     private VelocityExperienceService experienceService;
+    private final Map<String, com.velocitypowered.api.command.CommandMeta> aliasMetas = new ConcurrentHashMap<>();
 
     @Inject
     public BigBangHubVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -204,7 +205,8 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("rematch").aliases("revanche").plugin(this).build(),
                     new VelocityRematchCommand(this));
-            logger.info("BigBangHub Velocity 0.4.0 enabled with {} games", games().games().size());
+            syncAliasCommands(snapshot);
+            logger.info("BigBangHub Velocity 0.4.1 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
             proxy.shutdown();
@@ -1319,6 +1321,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             routing.set(instanceRouting);
             transfers = new VelocityTransferService(proxy, instanceRegistry, nextServers);
             config.set(next);
+            syncAliasCommands(next);
             source.sendPlainMessage("BigBangHub configuration reloaded.");
         } catch (ConfigException | IllegalArgumentException exception) {
             source.sendPlainMessage("Reload rejected; previous configuration kept: " + exception.getMessage());
@@ -1872,6 +1875,32 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         String hostA = a.getAddress() != null ? a.getAddress().getHostAddress() : a.getHostString();
         String hostB = b.getAddress() != null ? b.getAddress().getHostAddress() : b.getHostString();
         return hostA.equalsIgnoreCase(hostB);
+    }
+
+    private void syncAliasCommands(HubConfigSnapshot snapshot) {
+        // Remove aliases that no longer exist
+        for (String existing : new HashSet<>(aliasMetas.keySet())) {
+            if (!snapshot.aliases().containsKey(existing)) {
+                com.velocitypowered.api.command.CommandMeta meta = aliasMetas.remove(existing);
+                if (meta != null) proxy.getCommandManager().unregister(meta);
+            }
+        }
+        // Register or update aliases
+        for (Map.Entry<String, String> entry : snapshot.aliases().entrySet()) {
+            String alias = entry.getKey();
+            String gameVal = entry.getValue();
+            if (aliasMetas.containsKey(alias)) continue;
+            try {
+                GameId gameId = GameId.of(gameVal);
+                com.velocitypowered.api.command.CommandMeta meta = proxy.getCommandManager()
+                        .metaBuilder(alias).plugin(this).build();
+                proxy.getCommandManager().register(meta, new VelocityAliasCommand(this, gameId));
+                aliasMetas.put(alias, meta);
+                logger.info("Registered alias command /{} -> queue join {}", alias, gameVal);
+            } catch (IllegalArgumentException ex) {
+                logger.warn("Ignoring invalid alias {} -> {}: {}", alias, gameVal, ex.getMessage());
+            }
+        }
     }
 
     private void ensureDefaults() throws IOException {

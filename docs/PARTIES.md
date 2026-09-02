@@ -277,3 +277,28 @@ O BigBangHub 0.4.0 estende a camada de admissão e ciclo de vida de partidas par
    - Não é permitido executar warp quando o grupo está em `QUEUED`, `ASSIGNED` ou `IN_MATCH`.
    - Jogadores já conectados no servidor do líder não são reconectados redundante ou desnecessariamente.
 3. **Comunicação Bidirecional (`PARTY_WARP = 34`)**: O comando pode ser executado tanto diretamente no Proxy Velocity quanto em servidores Paper locais através do pacote de rede `PARTY_WARP`.
+
+---
+
+## 12. Experiência do Jogador no Hub (Party HUD & Efeitos Audiovisuais)
+
+O BigBangHub 0.4.0 inclui um subsistema completo de feedback contínuo em tempo real nos lobbies/hub:
+
+### Party Actionbar HUD
+- **Atualização Contínua**: Membros conectados em uma party recebem atualizações contínuas na actionbar a cada 2 segundos e em mudanças de estado:
+  - **Papel na Party**: `★ Líder` ou `• Membro`.
+  - **Membros Conectados**: `{online}/{total}` membros.
+  - **Status Atual**: `Lobby`, `Na Fila`, `Conectando`, `Em Partida`.
+- **Formato Configurável**: Configurável em `messages.yml` com suporte nativo a tags MiniMessage e cores legadas.
+
+### Sound & Title FX
+Eventos críticos da party e do ciclo de vida de partida disparam efeitos sonoros e títulos em destaque para garantir máxima atenção:
+- **Partida Encontrada (`match-found`)**: Título `PARTIDA ENCONTRADA!` com subtítulo e som `entity.player.levelup`.
+- **Reconexão Disponível (`reconnect-available`)**: Título `PARTIDA EM ANDAMENTO` com instrução interativa `/reconnect` e som `block.note_block.pling`.
+- **Voto e Consenso de Revanche (`rematch-consensus`)**: Título `REVANCHE ACEITA!` com som `entity.player.levelup`.
+- **Convite de Party (`party-invite-received`)**: Título `CONVITE DE PARTY` com som `entity.experience_orb.pickup`.
+- **Expulsão e Dissolução (`party-disbanded`, `party-kicked`)**: Título e som `entity.villager.no`.
+
+### Interações com NPCs e Menus de Fila
+- No Paper Hub, ao interagir com menus da bússola ou NPCs de fila (FancyNpcs/FancyHolograms), jogadores que pertencem a uma party mas não são o líder são bloqueados amigavelmente com a mensagem configurável:
+  `Apenas o líder da party pode entrar na fila.`

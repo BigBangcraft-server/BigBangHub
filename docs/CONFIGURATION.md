@@ -193,3 +193,65 @@ protection:
   fluid-placement: true
   void-safety: true
 ```
+
+---
+
+## 8. Mensagens, Efeitos Sonoros e HUD (`messages.yml`)
+
+Permite personalizar títulos, subtítulos, efeitos sonoros (Sound FX) e actionbars tanto no proxy Velocity quanto nos lobbies Paper:
+
+```yaml
+messages:
+  proxy-unavailable: '<red>Não foi possível localizar um servidor agora.</red>'
+  game-unavailable: '<red>Este minigame está temporariamente indisponível.</red>'
+
+experience:
+  sound-enabled: true
+  title-enabled: true
+  actionbar-enabled: true
+
+  match-found:
+    title: "§a§lPARTIDA ENCONTRADA!"
+    subtitle: "§fConectando ao servidor em instantes..."
+    sound: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.0
+
+  reconnect-available:
+    title: "§e§lPARTIDA EM ANDAMENTO"
+    subtitle: "§7Clique no chat ou use §a/reconnect"
+    sound: "block.note_block.pling"
+    volume: 1.0
+    pitch: 1.2
+
+  rematch-consensus:
+    title: "§a§lREVANCHE ACEITA!"
+    subtitle: "§fPreparando nova rodada..."
+    sound: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.5
+
+  party-invite-received:
+    title: "§b§lCONVITE DE PARTY"
+    subtitle: "§f{player} convidou você para o grupo!"
+    sound: "entity.experience_orb.pickup"
+    volume: 1.0
+    pitch: 1.0
+
+  party-disbanded:
+    title: "§c§lPARTY DISSOLVIDA"
+    subtitle: "§7O líder desfez o grupo."
+    sound: "entity.villager.no"
+    volume: 1.0
+    pitch: 0.8
+
+party-hud:
+  actionbar-format: "§eParty: {role} §8| §7Membros: §f{members_online}/{members_total} §8| §7Status: {status}"
+  leader-role: "§6★ Líder"
+  member-role: "§7• Membro"
+  status:
+    idle: "§aLobby"
+    queued: "§eNa Fila"
+    assigned: "§bConectando"
+    in-match: "§cEm Partida"
+```

@@ -1,48 +1,54 @@
-# Segurança e Hardening (BigBangHub 0.2.0)
+# Segurança e Hardening (BigBangHub 0.3.0)
 
 ## 1. Fronteiras de Confiança e Isolamento
 
-- **Clientes (Jogadores)**: Totalmente não confiáveis. Não escolhem servidores de destino, portas, nem manipulam payloads internos.
-- **Servidores Paper (Backends)**: Confiáveis dentro de seu próprio escopo. Um backend só pode registrar e atualizar instâncias correspondentes ao seu nome de conexão ou às regras de allowlist declaradas no proxy.
-- **Proxy Velocity**: Autoridade central absoluta sobre filas, registros em runtime, contagem de jogadores, alocação de vagas e transferências.
+- **Clientes (Jogadores)**: Totalmente não confiáveis. Não escolhem servidores de destino, portas, nem manipulam tickets ou estados de partida.
+- **Servidores Paper (Backends)**: Confiáveis dentro de seu próprio escopo. Um backend só pode registrar instâncias e atualizar partidas associadas à sua identidade validada.
+- **Proxy Velocity**: Autoridade central absoluta sobre filas, registro de partidas, validação de tickets de admissão e transferências.
 - **Isolamento de Rede**: O tráfego de backend transita via túnel WireGuard (`10.8.0.x`). BungeeGuard assegura que conexões diretas não autorizadas à porta dos backends sejam rejeitadas.
 
 ---
 
-## 2. Validação de Identidade e Allowlists
+## 2. Segurança de Ingressos de Admissão (`AdmissionTicket`)
 
-Na versão 0.2.0, para impedir que um backend comprometido tente sequestrar outros servidores da rede (ex: um minigame afirmando ser `survival` ou `hubminigame`):
+O BigBangHub 0.3.0 introduz tickets criptográficos transitórios para combater acessos indevidos e conexões manuais diretas:
 
-1. **Validação de Origem**: O Velocity confronta o nome da conexão física (`connection.getServerInfo().getName()`) com o `instanceId` declarado no payload `INSTANCE_REGISTER`.
-2. **Allowlist Configurável**: Padrões explícitos podem ser configurados em `registry.allowed` no Velocity (ex: `campominado-*` mapeado exclusivamente para o jogo `campominado`).
-3. **Existência no Proxy**: O servidor deve existir previamente na configuração do Velocity (`proxy.getServer(serverName).isPresent()`). Se o servidor não estiver cadastrado no proxy, o registro é sumariamente recusado com `INSTANCE_REGISTER_ACK(success=false)`.
-
----
-
-## 3. Prevenção de Ataques de Replay e Dessincronização
-
-1. **UUID Session ID por Processo**:
-   - Toda execução de servidor gera um `sessionId` criptograficamente seguro.
-   - O proxy vincula a instância ao `sessionId`.
-   - Mensagens com `sessionId` divergente (ex: pacotes atrasados em buffer TCP após reinicialização) são ignoradas instantaneamente (`REJECTED_STALE_SESSION`), evitando corrupção de estado por condições de corrida.
-2. **TTL de Reservas de Vaga (Anti-Starvation)**:
-   - Um jogador ou backend malicioso não pode segurar uma vaga indefinidamente. Toda reserva expira em `reservation-ttl` (padrão: 10s).
-   - A varredura contínua de 1 segundo cancela reservas expiradas, liberando o slot para outros jogadores.
-3. **Limite de 1 Reserva Ativa por Jogador**:
-   - Um jogador só pode possuir no máximo 1 reserva ativa em todo o proxy ao mesmo tempo, impedindo ataques de exaustão de vagas por concorrência artificial.
+1. **Vínculo Estrito**: Todo ticket é emitido pelo Velocity e vinculado de forma imutável a:
+   - `playerId`: UUID do jogador;
+   - `matchId`: ID da partida autorizada;
+   - `instanceId`: Servidor físico onde a partida ocorre;
+   - `token`: Nonce criptográfico aleatório gerado no momento do roteamento.
+2. **Uso Único (Single-Use)**: O ticket é imediatamente removido e invalidado no primeiro consumo (`ticketService.consume(...)`). Qualquer tentativa posterior de reuso resulta em `REPLAY_ATTACK_REJECTED`.
+3. **TTL Bounded**: Prazo de validade estrito (`admission-timeout`, padrão 10s). Tickets órfãos por falha de conexão expiram automaticamente.
+4. **Política de Entrada Direta (`DIRECT_JOIN_REJECTED`)**:
+   - Conexões sem ticket ou com ticket inválido/expirado não resultam em kicks ou bans punitivos.
+   - O jogador é interceptado na chegada e conduzido de forma transparente e segura de volta ao Hub principal (`hubminigame`), preservando a estabilidade e a experiência do usuário.
 
 ---
 
-## 4. Rate Limiting
+## 3. Invariante de Sessão e Prevenção de Concorrência
 
-- **Por Jogador**: Intervalo mínimo de 100 ms entre requisições de fila ou conexão (`rateAllowed`).
-- **Por Backend**: Limite de segurança de 50 mensagens por segundo por servidor backend (`backendRateAllowed`), prevenindo sobrecarga do event loop do proxy por flooding de pacotes.
+1. **Invariante de Partida Única por Jogador**:
+   - Um jogador só pode estar em **uma partida ativa** na rede em qualquer momento.
+   - O `InMemoryMatchRegistry` mapeia `activeByPlayer` com CAS atômico. Se o jogador tentar entrar em uma segunda partida sem ter saído da anterior, a admissão é rejeitada com `ErrorCode.PLAYER_ALREADY_ASSIGNED`.
+2. **Revisões Monotônicas (`CAS Protection`)**:
+   - Toda transição de estado da partida incrementa `revision`.
+   - Mensagens de transição carregam a revisão esperada. Mensagens desordenadas ou com revisão defasada são descartadas para impedir regressão de estados.
+3. **Handshake de Limpeza (`markInstanceReady`)**:
+   - Instâncias finalizadas permanecem presas à partida anterior até a conclusão do reset de arena, impedindo que novos jogadores spawnem em mapas não resetados.
 
 ---
 
-## 5. Criptografia e Autenticação de Mensagens
+## 4. Auditoria de Ações Administrativas
 
-- Quando `BIGBANGHUB_MESSAGE_SECRET` está definido no ambiente, todo o envelope binário `BBH1` é assinado com **HMAC-SHA256**.
-- A verificação de assinatura utiliza comparação em tempo constante (`MessageDigest.isEqual`) para prevenir ataques de temporização (*timing attacks*).
-- Com `require-hmac: true`, pacotes não autenticados ou adulterados são rejeitados na camada de decodificação.
-- O segredo nunca é gravado em arquivos de configuração versionados no Git nem exposto em logs.
+Operações que interferem no estado de partidas em produção geram logs de auditoria explícitos com nível `INFO`:
+- Aborto forçado: `AUDIT: Admin <origem> aborted match <matchId>`
+- Retorno forçado: `AUDIT: Admin <origem> returned player <jogador> to hub`
+
+---
+
+## 5. Rate Limiting e HMAC
+
+- **Rate Limiting por Jogador**: Máximo de 1 requisição a cada 100 ms.
+- **Rate Limiting por Backend**: Máximo de 50 mensagens por segundo por servidor backend.
+- **HMAC-SHA256**: Envelopes binários `BBH1` assinados quando `BIGBANGHUB_MESSAGE_SECRET` estiver configurado, com verificação em tempo constante (`MessageDigest.isEqual`) contra timing attacks.

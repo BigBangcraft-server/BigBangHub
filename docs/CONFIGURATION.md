@@ -1,4 +1,4 @@
-# Configuração (BigBangHub 0.2.0)
+# Configuração (BigBangHub 0.3.0)
 
 O BigBangHub carrega `config.yml`, `menus.yml`, `games.yml`, `servers.yml` e `messages.yml` da pasta de dados do plugin tanto no Paper quanto no Velocity.
 
@@ -31,11 +31,28 @@ server:
     accepting-players: true
 ```
 
-*Nota: Em servidores com papel `MINIGAME`, o plugin não registra proteções de lobby nem a bússola de navegação, dedicando-se exclusivamente ao ciclo de vida da instância.*
+*Nota: Em servidores com papel `MINIGAME`, o plugin não registra proteções de lobby nem a bússola de navegação, dedicando-se exclusivamente ao ciclo de vida da instância e das partidas.*
 
 ---
 
-## 2. Configuração de Registro e Roteamento no Velocity
+## 2. Ciclo de Vida de Partidas e Espectadores (`match` e `spectator`)
+
+Configurações introduzidas no BigBangHub 0.3.0 presentes no `config.yml` (Velocity e Paper):
+
+```yaml
+match:
+  admission-timeout: 10s   # TTL do ticket criptográfico de admissão de jogadores
+  return-timeout: 10s      # Tempo limite para transferências de retorno ao Hub
+  finished-retention: 60s  # Retenção de tombstones de partidas encerradas para consulta
+  auto-create-match: true  # Se true, cria e abre partidas automaticamente no boot e pós-cleanup
+
+spectator:
+  enabled: true            # Permite o ingresso e transição de jogadores para espectadores
+```
+
+---
+
+## 3. Configuração de Registro e Roteamento no Velocity
 
 No `config.yml` do Velocity:
 
@@ -66,10 +83,10 @@ proxy:
 
 ---
 
-## 3. Jogos e Estratégias de Roteamento (`games.yml`)
+## 4. Jogos e Estratégias de Roteamento (`games.yml`)
 
 As estratégias de matchmaking disponíveis para cada minigame são:
-- `FILL_WAITING` (Padrão): Preenche servidores que já estão esperando por jogadores.
+- `FILL_EXISTING_MATCH` / `FILL_WAITING` (Padrão): Preenche partidas que já estão esperando por jogadores com capacidade antes de abrir novas instâncias.
 - `LEAST_PLAYERS`: Distribui a carga entre as instâncias disponíveis.
 - `ROUND_ROBIN`: Alterna ciclicamente entre as instâncias elegíveis.
 
@@ -96,7 +113,7 @@ games:
 
 ---
 
-## 4. Servidores Estáticos de Fallback (`servers.yml`)
+## 5. Servidores Estáticos de Fallback (`servers.yml`)
 
 Utilizados como bootstrap e para retrocompatibilidade quando nenhum agente dinâmico ainda se registrou:
 
@@ -113,7 +130,7 @@ servers:
 
 ---
 
-## 5. Bússola e Menus (`menus.yml`)
+## 6. Bússola e Menus (`menus.yml`)
 
 Utilizado no servidor com papel `role: HUB`:
 
@@ -139,11 +156,9 @@ compass:
         value: campominado
 ```
 
-Tipos de ação suportados: `QUEUE`, `SERVER`, `PLAYER_COMMAND`, `CONSOLE_COMMAND`, `CLOSE`, `MESSAGE`, `SOUND`.
-
 ---
 
-## 6. Proteções do Lobby e Inventário
+## 7. Proteções do Lobby e Inventário
 
 Ativas no `HUB` para preservar o spawn contra quebras, danos, fome e quedas no void:
 

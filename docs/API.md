@@ -1,6 +1,6 @@
-# API de Integração (BigBangHub 0.2.0)
+# API de Integração (BigBangHub 0.3.0)
 
-`bigbanghub-api` é o contrato público versionado como parte de `0.2.0`.
+`bigbanghub-api` é o contrato público versionado como parte de `0.3.0`.
 Integrações no mesmo build usam:
 
 ```groovy
@@ -12,10 +12,12 @@ Para um consumidor externo, publique o módulo com
 
 ```groovy
 repositories { mavenLocal() }
-dependencies { implementation 'com.bigbangcraft:bigbanghub-api:0.2.0' }
+dependencies { implementation 'com.bigbangcraft:bigbanghub-api:0.3.0' }
 ```
 
-## Acesso no Paper
+---
+
+## 1. Acesso no Paper
 
 O plugin registra `BigBangHubApi` no `ServicesManager`:
 
@@ -28,45 +30,69 @@ if (registration != null) {
     // Papel do servidor atual (HUB, MINIGAME, GENERIC)
     ServerRole role = hub.role();
 
-    // Se for um servidor de minigame, mutar estado e capacidade em runtime
-    hub.instance().ifPresent(instance -> {
-        instance.setState(GameState.IN_GAME);
-        instance.setAcceptingPlayers(false);
-    });
+    // Controle de Ciclo de Vida da Partida (Match Lifecycle)
+    MatchHandle match = hub.matches().create(MatchDefinition.builder()
+            .gameId("campominado")
+            .minPlayers(2)
+            .maxPlayers(10)
+            .arenaId("desert_01")
+            .build());
 
-    // Fila de espera
-    hub.queues().join(player.getUniqueId(), GameId.of("campominado"))
-        .thenAccept(result -> player.sendMessage(result.message()));
+    match.open();
 }
 ```
 
-## Contratos Principais
+---
 
-- `ServerRole`: Enum explícito (`HUB`, `MINIGAME`, `GENERIC`) definindo a responsabilidade do nó na rede.
-- `InstanceService`: Contrato voltado a servidores de minigame (`role == MINIGAME`). Permite que o plugin de minigame notifique o Velocity instantaneamente sobre transições de estado (`WAITING`, `IN_GAME`, `ENDING`), permissão de novas entradas (`acceptingPlayers`) e capacidade customizada (`updateCapacity`).
-- `InstanceRegistry`: Consulta de instâncias ativas em runtime no Velocity (`instances()`, `instancesForGame(gameId)`, `find(instanceId)`).
-- `InstanceSnapshot`: Snapshot imutável contendo `instanceId`, `gameId`, `serverName`, `sessionId`, `state`, `health`, `playerCount`, `minPlayers`, `maxPlayers`, `activeReservations`, `acceptingPlayers` e timestamp do último heartbeat.
-- `Reservation`: Registro imutável de reserva de vaga com TTL (`reservationId`, `playerId`, `instanceId`, `gameId`, `state`, `createdAt`, `expiresAt`).
-- `ReservationState`: `RESERVED`, `CONFIRMED`, `EXPIRED`, `CANCELLED`.
-- `GameRegistry`: Jogos imutáveis carregados da configuração.
-- `ServerRegistry`: Destinos lógicos configurados estaticamente.
-- `QueueService`: `join`, `leave`, `status`, `contains` e `size`; chamadas seguras para concorrência e retorno assíncrono via `CompletionStage`.
-- `RoutingService`: Seleção health-aware, capacity-aware e reservation-aware (`select(gameId)` e `selectInstance(gameId)`).
-- `PlayerTransferService`: Transferência segura de jogadores via proxy.
+## 2. Contratos de Partidas (`MatchManager` e `MatchHandle`)
 
-## Eventos Observacionais
+- `MatchManager`: Gerencia e consulta sessões de partidas ativas.
+  - `create(MatchDefinition)`: Cria uma nova sessão.
+  - `currentMatch()`: Obtém o handle da partida em execução no nó local.
+  - `activeMatch(instanceId)` / `match(matchId)` / `activeMatches()` / `activeMatchesForGame(gameId)`.
+  - `matchForPlayer(playerId)`: Localiza a partida ativa onde o jogador está alocado.
+  - `abortMatch(matchId, reason)`: Aborta assincronamente uma partida.
+- `MatchHandle`: Controlador de uma partida específica.
+  - `matchId()`: Identificador imutável.
+  - `snapshot()`: Snapshot imutável da partida com contadores e capacidades.
+  - `state()`: Estado atual do ciclo de vida (`MatchState`).
+  - `revision()`: Revisão monotônica da máquina de estados.
+  - `participants()` / `participant(playerId)`: Consulta de participantes e papéis.
+  - `open()`: Transiciona `CREATED -> WAITING` e abre matchmaking.
+  - `startCountdown(duration)`: Transiciona `WAITING -> COUNTDOWN`.
+  - `cancelCountdown()`: Cancela contagem e retorna para `WAITING`.
+  - `lock()`: Trava admissão de novos jogadores (`COUNTDOWN -> LOCKED`).
+  - `start()`: Inicia o jogo (`LOCKED -> IN_GAME`).
+  - `eliminate(playerId)`: Elimina jogador ativo.
+  - `setSpectator(playerId)`: Transforma jogador em espectador (`ParticipantRole.SPECTATOR`).
+  - `finish(MatchResult)`: Conclui a partida e agenda retorno seguro ao Hub.
+  - `abort(reason)`: Aborta a partida por erro ou intervenção.
+  - `markReady()`: Handshake de pós-limpeza, liberando a instância no proxy.
 
-### Filas:
-- `QueueJoinedEvent`: Jogador entrou na fila em determinada posição.
-- `QueueLeftEvent`: Jogador saiu ou foi removido da fila.
-- `QueueAssignedEvent`: Jogador foi despachado para uma instância.
+---
 
-### Instâncias e Reservas:
-- `InstanceRegisteredEvent`: Nova instância registrada em runtime.
-- `InstanceHealthChangedEvent`: Transição de saúde (`HEALTHY`, `SUSPECT`, `UNAVAILABLE`).
-- `InstanceStateChangedEvent`: Transição de estado de partida (`WAITING`, `IN_GAME`, etc.).
-- `ReservationConfirmedEvent`: Jogador conectou no servidor destino e confirmou vaga.
-- `ReservationExpiredEvent`: Reserva expirou por timeout sem chegada do jogador.
-- `ReservationCancelledEvent`: Reserva cancelada por desconexão ou falha de transferência.
+## 3. Tipos e Registros Imutáveis
 
-Listeners são registrados via `addQueueListener` e `addInstanceListener`. São observacionais e publicados após a transição atômica.
+- `MatchId`: Identificador único validado (ex: `0191a2b3-c4d5-7e8f-9a0b-1c2d3e4f5a6b`).
+- `MatchDefinition`: Especificação de partida (`gameId`, `minPlayers`, `maxPlayers`, `allowLateJoin`, `arenaId`, `metadata`). Construído via `MatchDefinition.builder()`.
+- `MatchSnapshot`: Snapshot imutável contendo estado, capacidade efetiva (`maxPlayers - (participantes + pendentes)`), datas de início/fim e resultado.
+- `AdmissionTicket`: Ticket criptográfico de uso único com TTL para entrada autorizada via proxy.
+- `MatchParticipant`: Registro de participante (`playerId`, `matchId`, `role`, `state`, `joinedAt`).
+- `MatchResult`: Resultado com desfecho (`WIN`, `DRAW`, `ABORTED`), vencedores, duração e metadados.
+- `ReturnReason`: Motivos de retorno seguro (`MATCH_FINISHED`, `MATCH_ABORTED`, `PLAYER_ELIMINATED`, `PLAYER_LEFT`, `SERVER_FAILURE`, `ADMIN_FORCE_RETURN`, `DIRECT_JOIN_REJECTED`).
+
+---
+
+## 4. Eventos do Ciclo de Vida da Partida
+
+Listeners são registrados via `hub.addMatchListener(Consumer<MatchEvent>)`:
+
+- `MatchCreatedEvent`: Nova partida criada.
+- `MatchStateChangedEvent`: Transição de estado de partida (`oldState` → `newState`, com revisão monotônica).
+- `PlayerAdmissionAcceptedEvent`: Admissão de jogador aprovada por ticket válido.
+- `PlayerAdmissionRejectedEvent`: Admissão rejeitada (ticket expirado, inexistente ou partida cheia).
+- `MatchParticipantJoinedEvent`: Participante ingressou na sessão local.
+- `MatchParticipantLeftEvent`: Participante saiu da partida.
+- `PlayerEliminatedEvent`: Jogador foi eliminado do minigame.
+- `MatchFinishedEvent`: Partida finalizada com resultado.
+- `MatchAbortedEvent`: Partida abortada.

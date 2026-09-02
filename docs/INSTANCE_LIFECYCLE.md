@@ -1,6 +1,6 @@
-# Ciclo de Vida de Instâncias, Liveness e Reservas (BigBangHub 0.2.0)
+# Ciclo de Vida de Instâncias, Liveness e Reservas (BigBangHub 0.3.0)
 
-O **BigBangHub 0.2.0** introduz uma infraestrutura completa de **Runtime Instance Registry**, **Liveness Tracking com Heartbeats**, **Slot Reservations transitórias** e **Roteamento Resiliente Orientado a Eventos** para a rede BigBangCraft.
+O **BigBangHub 0.3.0** introduz uma infraestrutura completa de **Runtime Instance Registry**, **Liveness Tracking com Heartbeats**, **Slot Reservations transitórias**, **Ciclo de Vida Padronizado de Partidas** e **Roteamento Resiliente Orientado a Eventos** para a rede BigBangCraft.
 
 ---
 
@@ -162,3 +162,18 @@ Para desenvolvedores de minigames (como Campo Minado, BedWars, HG):
    }
    ```
    Toda chamada a `setState()`, `setAcceptingPlayers()` ou `updateCapacity()` sincroniza instantaneamente com o Velocity via mensagens de plugin na conexão ativa.
+
+---
+
+## 7. Relação com o Ciclo de Vida de Partidas (Match Lifecycle)
+
+Uma instância de minigame executa sessões de partidas controladas pelo contrato `MatchHandle` (BigBangHub 0.3.0).
+Quando a partida encerra (`FINISHED` ou `ABORTED`), os jogadores são retornados com segurança ao Hub e a instância entra na fase de limpeza da arena.
+
+Para evitar que novos jogadores entrem enquanto blocos ou entidades ainda estão sendo restaurados:
+1. A instância permanece vinculada à partida anterior no proxy, bloqueada para novas admissões.
+2. O plugin de minigame executa a restauração da arena.
+3. Ao concluir, chama `match.markReady()`.
+4. O envio de `INSTANCE_READY` desassocia a instância da partida encerrada, tornando-a disponível para a próxima sessão.
+
+Para detalhes completos do contrato e exemplos de código, consulte [MATCH_LIFECYCLE.md](MATCH_LIFECYCLE.md) e [MINIGAME_INTEGRATION.md](MINIGAME_INTEGRATION.md).

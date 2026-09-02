@@ -371,6 +371,13 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 matchRegistry.removePlayer(match.matchId(), player.getUniqueId(), "kicked from server", Instant.now());
             });
         }
+        if (partyService != null) {
+            partyService.partyOf(player.getUniqueId()).ifPresent(party -> {
+                if (party.state().isLocked()) {
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                }
+            });
+        }
         inFlightTransfers.remove(player.getUniqueId());
 
         RegisteredServer hubServer = proxy.getServer(hubName).orElse(null);
@@ -1267,6 +1274,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 return new QueueValidation(true, "OK", party);
             }
         }
+        if (inFlightTransfers.contains(playerId) || (matchRegistry != null && matchRegistry.findActiveForPlayer(playerId).isPresent())) {
+            return new QueueValidation(false, "Você já possui uma partida ativa ou em andamento.", null);
+        }
         return new QueueValidation(true, "OK", null);
     }
 
@@ -1719,6 +1729,8 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             } else if (event instanceof InstanceHealthChangedEvent healthEvent) {
                 if (healthEvent.newHealth() == InstanceHealth.HEALTHY) {
                     instanceRegistry.find(healthEvent.instanceId()).ifPresent(inst -> dispatchQueue(inst.gameId()));
+                } else if (healthEvent.newHealth() == InstanceHealth.UNAVAILABLE) {
+                    handleInstanceCrash(healthEvent.instanceId());
                 }
             } else if (event instanceof InstanceStateChangedEvent stateEvent) {
                 if (stateEvent.newState() == GameState.WAITING) {
@@ -1883,6 +1895,30 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         for (PartySnapshot party : partyService.activeParties()) {
             for (UUID memberId : party.memberIds()) {
                 proxy.getPlayer(memberId).ifPresent(p -> updatePartyHud(p, party));
+            }
+        }
+    }
+
+    void handleInstanceCrash(ServerId instanceId) {
+        if (matchRegistry != null) {
+            Optional<MatchSnapshot> activeMatch = matchRegistry.findActiveForInstance(instanceId);
+            if (activeMatch.isPresent()) {
+                MatchSnapshot match = activeMatch.get();
+                List<UUID> participantIds = matchRegistry.findSession(match.matchId())
+                        .map(s -> s.participants().stream().map(MatchParticipant::playerId).toList())
+                        .orElse(List.of());
+                matchRegistry.reconcileInstanceCrashOrShutdown(instanceId, null, Instant.now());
+                for (UUID pid : participantIds) {
+                    if (partyService != null) {
+                        partyService.partyOf(pid).ifPresent(party -> {
+                            if (party.state().isLocked()) {
+                                partyService.transitionState(party.partyId(), PartyState.IDLE);
+                            }
+                        });
+                    }
+                    proxy.getPlayer(pid).ifPresent(p ->
+                            p.sendPlainMessage("§cO servidor da partida ficou indisponível. Sua party retornou ao estado livre no Hub."));
+                }
             }
         }
     }

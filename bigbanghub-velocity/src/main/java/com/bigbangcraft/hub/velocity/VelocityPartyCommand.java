@@ -21,6 +21,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,8 @@ final class VelocityPartyCommand implements SimpleCommand {
     private final BigBangHubVelocityPlugin plugin;
     private final PartyService parties;
     private final ProxyServer proxy;
+
+    private static final java.util.regex.Pattern USERNAME_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9_]{3,16}$");
 
     VelocityPartyCommand(BigBangHubVelocityPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -137,6 +140,10 @@ final class VelocityPartyCommand implements SimpleCommand {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendPlainMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player target = proxy.getPlayer(targetName).orElse(null);
         if (target == null || !target.isActive()) {
             player.sendPlainMessage("§cJogador '" + targetName + "' não encontrado ou offline.");
@@ -298,6 +305,10 @@ final class VelocityPartyCommand implements SimpleCommand {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendPlainMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player targetPlayer = proxy.getPlayer(targetName).orElse(null);
         UUID targetId = null;
         if (targetPlayer != null) {
@@ -349,6 +360,10 @@ final class VelocityPartyCommand implements SimpleCommand {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendPlainMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player targetPlayer = proxy.getPlayer(targetName).orElse(null);
         UUID targetId = targetPlayer != null ? targetPlayer.getUniqueId() : null;
         if (targetId == null) {

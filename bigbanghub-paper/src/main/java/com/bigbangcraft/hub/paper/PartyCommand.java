@@ -27,6 +27,7 @@ import java.util.UUID;
 
 final class PartyCommand implements CommandExecutor, TabCompleter {
     private final BigBangHubPaperPlugin plugin;
+    private static final java.util.regex.Pattern USERNAME_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9_]{3,16}$");
 
     PartyCommand(BigBangHubPaperPlugin plugin) {
         this.plugin = plugin;
@@ -128,6 +129,10 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player target = Bukkit.getPlayer(targetName);
         if (target == null || !target.isOnline()) {
             player.sendMessage("§cJogador '" + targetName + "' não encontrado ou offline.");
@@ -288,6 +293,10 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player targetPlayer = Bukkit.getPlayer(targetName);
         UUID targetId = targetPlayer != null ? targetPlayer.getUniqueId() : null;
 
@@ -337,6 +346,10 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
         }
 
         String targetName = args[1];
+        if (!USERNAME_PATTERN.matcher(targetName).matches()) {
+            player.sendMessage("§cNome de jogador inválido. Utilize apenas caracteres alfanuméricos e _ (3-16 caracteres).");
+            return;
+        }
         Player targetPlayer = Bukkit.getPlayer(targetName);
         UUID targetId = targetPlayer != null ? targetPlayer.getUniqueId() : null;
 

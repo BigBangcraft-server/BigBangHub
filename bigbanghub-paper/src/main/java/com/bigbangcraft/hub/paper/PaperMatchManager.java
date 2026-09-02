@@ -161,13 +161,25 @@ public final class PaperMatchManager implements MatchManager {
         PaperMatchHandle handle = currentMatch.get();
         if (handle == null) {
             player.sendMessage("§cNenhuma partida aberta no momento. Retornando ao Hub...");
-            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "No active match on server");
+            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "No active match on server")
+                    .thenAccept(res -> {
+                        if (!res.success()) {
+                            Bukkit.getScheduler().runTask(plugin, () ->
+                                    player.kick(net.kyori.adventure.text.Component.text("§cEntrada direta não autorizada: Nenhuma partida aberta.")));
+                        }
+                    });
             return;
         }
 
         if (!handle.state().canAcceptAdmissions(handle.snapshot().effectiveCapacity() > 0)) {
             player.sendMessage("§cA partida não está aceitando novos jogadores. Retornando ao Hub...");
-            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Match not joinable");
+            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Match not joinable")
+                    .thenAccept(res -> {
+                        if (!res.success()) {
+                            Bukkit.getScheduler().runTask(plugin, () ->
+                                    player.kick(net.kyori.adventure.text.Component.text("§cEntrada direta não autorizada: Partida fechada.")));
+                        }
+                    });
             return;
         }
 
@@ -195,16 +207,34 @@ public final class PaperMatchManager implements MatchManager {
                         } else {
                             eventBus.publish(new PlayerAdmissionRejectedEvent(handle.matchId(), player.getUniqueId(), response.reason()));
                             player.sendMessage("§cEntrada direta não autorizada: " + response.reason() + ". Retornando ao Hub...");
-                            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, response.reason());
+                            transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, response.reason())
+                                    .thenAccept(res -> {
+                                        if (!res.success()) {
+                                            Bukkit.getScheduler().runTask(plugin, () ->
+                                                    player.kick(net.kyori.adventure.text.Component.text("§cEntrada direta não autorizada: " + response.reason())));
+                                        }
+                                    });
                         }
                     } catch (ProtocolValidationException e) {
                         player.sendMessage("§cErro na validação de entrada. Retornando ao Hub...");
-                        transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Validation protocol error");
+                        transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Validation protocol error")
+                                .thenAccept(res -> {
+                                    if (!res.success()) {
+                                        Bukkit.getScheduler().runTask(plugin, () ->
+                                                player.kick(net.kyori.adventure.text.Component.text("§cErro na validação de entrada.")));
+                                    }
+                                });
                     }
                 })
                 .exceptionally(err -> {
                     player.sendMessage("§cTimeout ao validar entrada com proxy. Retornando ao Hub...");
-                    transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Admission timeout");
+                    transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "Admission timeout")
+                            .thenAccept(res -> {
+                                if (!res.success()) {
+                                    Bukkit.getScheduler().runTask(plugin, () ->
+                                            player.kick(net.kyori.adventure.text.Component.text("§cTimeout ao validar entrada com proxy.")));
+                                }
+                            });
                     return null;
                 });
     }

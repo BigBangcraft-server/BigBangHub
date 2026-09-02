@@ -17,6 +17,13 @@ public interface MatchHandle {
 
     Collection<MatchParticipant> participants();
 
+    default Collection<MatchParticipant> participantsOfParty(PartyId partyId) {
+        if (partyId == null) return java.util.List.of();
+        return participants().stream()
+                .filter(p -> p.partyId().filter(partyId::equals).isPresent())
+                .toList();
+    }
+
     Optional<MatchParticipant> participant(UUID playerId);
 
     CompletionStage<Void> open();

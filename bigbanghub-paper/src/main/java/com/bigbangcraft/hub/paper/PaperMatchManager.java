@@ -181,7 +181,7 @@ public final class PaperMatchManager implements MatchManager {
                             ParticipantRole role = (response.role() == MessagePayloads.ParticipantRoleWire.SPECTATOR)
                                     ? ParticipantRole.SPECTATOR : ParticipantRole.PLAYER;
                             MatchParticipant participant = new MatchParticipant(
-                                    player.getUniqueId(), handle.matchId(), role, ParticipantState.ACTIVE, Instant.now());
+                                    player.getUniqueId(), handle.matchId(), role, ParticipantState.ACTIVE, Instant.now(), response.partyId());
                             handle.addParticipant(participant);
                             eventBus.publish(new PlayerAdmissionAcceptedEvent(handle.matchId(), player.getUniqueId(), role));
                             eventBus.publish(new MatchParticipantJoinedEvent(participant));

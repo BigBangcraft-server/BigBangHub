@@ -11,6 +11,7 @@ import com.bigbangcraft.hub.api.MatchParticipant;
 import com.bigbangcraft.hub.api.MatchResult;
 import com.bigbangcraft.hub.api.MatchSnapshot;
 import com.bigbangcraft.hub.api.MatchState;
+import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.ReturnReason;
 import com.bigbangcraft.hub.api.ServerId;
 import com.bigbangcraft.hub.common.InMemoryMatchRegistry;
@@ -106,6 +107,7 @@ public final class VelocityMatchManager implements MatchManager {
         @Override public MatchState state() { return state.stateMachine().state(); }
         @Override public long revision() { return state.stateMachine().revision(); }
         @Override public Collection<MatchParticipant> participants() { return state.participants(); }
+        @Override public Collection<MatchParticipant> participantsOfParty(PartyId partyId) { return state.participantsOfParty(partyId); }
         @Override public Optional<MatchParticipant> participant(UUID playerId) { return state.participant(playerId); }
 
         @Override

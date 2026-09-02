@@ -4,6 +4,7 @@ import com.bigbangcraft.hub.api.AdmissionTicket;
 import com.bigbangcraft.hub.api.MatchException;
 import com.bigbangcraft.hub.api.MatchId;
 import com.bigbangcraft.hub.api.ParticipantRole;
+import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.ServerId;
 
 import java.security.SecureRandom;
@@ -38,17 +39,23 @@ public final class AdmissionTicketService {
 
     public synchronized AdmissionTicket issue(
             UUID playerId, MatchId matchId, ServerId instanceId, ParticipantRole role, Instant now) {
-        return issue(playerId, matchId, instanceId, role, now, defaultTtl);
+        return issue(playerId, matchId, instanceId, role, now, defaultTtl, Optional.empty());
     }
 
     public synchronized AdmissionTicket issue(
             UUID playerId, MatchId matchId, ServerId instanceId, ParticipantRole role, Instant now, Duration ttl) {
+        return issue(playerId, matchId, instanceId, role, now, ttl, Optional.empty());
+    }
+
+    public synchronized AdmissionTicket issue(
+            UUID playerId, MatchId matchId, ServerId instanceId, ParticipantRole role, Instant now, Duration ttl, Optional<PartyId> partyId) {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(matchId, "matchId");
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(ttl, "ttl");
+        Objects.requireNonNull(partyId, "partyId");
 
         UUID existingTicketId = activeByPlayer.remove(playerId);
         if (existingTicketId != null) {
@@ -61,7 +68,7 @@ public final class AdmissionTicketService {
         String token = HexFormat.of().formatHex(tokenBytes);
 
         AdmissionTicket ticket = new AdmissionTicket(
-                ticketId, playerId, matchId, instanceId, role, now, now.plus(ttl), token);
+                ticketId, playerId, matchId, instanceId, role, now, now.plus(ttl), token, partyId);
 
         ticketsById.put(ticketId, ticket);
         activeByPlayer.put(playerId, ticketId);

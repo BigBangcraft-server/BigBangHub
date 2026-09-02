@@ -12,6 +12,7 @@ import com.bigbangcraft.hub.api.MatchState;
 import com.bigbangcraft.hub.api.MatchStateChangedEvent;
 import com.bigbangcraft.hub.api.ParticipantRole;
 import com.bigbangcraft.hub.api.ParticipantState;
+import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.PlayerEliminatedEvent;
 import com.bigbangcraft.hub.api.ReturnReason;
 import com.bigbangcraft.hub.common.MatchStateMachine;
@@ -98,6 +99,14 @@ public final class PaperMatchHandle implements MatchHandle {
     }
 
     @Override
+    public Collection<MatchParticipant> participantsOfParty(PartyId partyId) {
+        if (partyId == null) return java.util.List.of();
+        return participants.values().stream()
+                .filter(p -> p.partyId().filter(partyId::equals).isPresent())
+                .toList();
+    }
+
+    @Override
     public Optional<MatchParticipant> participant(UUID playerId) {
         return Optional.ofNullable(participants.get(playerId));
     }
@@ -179,7 +188,7 @@ public final class PaperMatchHandle implements MatchHandle {
         if (current == null) return CompletableFuture.completedFuture(null);
 
         MatchParticipant updated = new MatchParticipant(
-                playerId, matchId, current.role(), ParticipantState.ELIMINATED, current.joinedAt());
+                playerId, matchId, current.role(), ParticipantState.ELIMINATED, current.joinedAt(), current.partyId());
         participants.put(playerId, updated);
         manager.bridge().sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
                 MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
@@ -194,7 +203,7 @@ public final class PaperMatchHandle implements MatchHandle {
         if (current == null) return CompletableFuture.completedFuture(null);
 
         MatchParticipant updated = new MatchParticipant(
-                playerId, matchId, ParticipantRole.SPECTATOR, ParticipantState.SPECTATING, current.joinedAt());
+                playerId, matchId, ParticipantRole.SPECTATOR, ParticipantState.SPECTATING, current.joinedAt(), current.partyId());
         participants.put(playerId, updated);
         manager.bridge().sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
                 MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(

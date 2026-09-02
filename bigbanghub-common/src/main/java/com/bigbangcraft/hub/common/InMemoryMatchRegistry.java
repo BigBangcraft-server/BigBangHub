@@ -20,6 +20,7 @@ import com.bigbangcraft.hub.api.ParticipantRole;
 import com.bigbangcraft.hub.api.ParticipantState;
 import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerEliminatedEvent;
+import com.bigbangcraft.hub.api.PartyId;
 import com.bigbangcraft.hub.api.ServerId;
 
 import java.time.Duration;
@@ -143,7 +144,7 @@ public final class InMemoryMatchRegistry {
         public synchronized MatchParticipant admit(AdmissionTicket ticket, Instant now) {
             pendingAdmissions.updateAndGet(current -> Math.max(0, current - 1));
             MatchParticipant participant = new MatchParticipant(
-                    ticket.playerId(), matchId, ticket.role(), ParticipantState.ACTIVE, now);
+                    ticket.playerId(), matchId, ticket.role(), ParticipantState.ACTIVE, now, ticket.partyId());
             participants.put(ticket.playerId(), participant);
             return participant;
         }
@@ -154,7 +155,7 @@ public final class InMemoryMatchRegistry {
                 return Optional.empty();
             }
             MatchParticipant updated = new MatchParticipant(
-                    current.playerId(), matchId, current.role(), ParticipantState.ELIMINATED, current.joinedAt());
+                    current.playerId(), matchId, current.role(), ParticipantState.ELIMINATED, current.joinedAt(), current.partyId());
             participants.put(playerId, updated);
             return Optional.of(updated);
         }
@@ -165,7 +166,7 @@ public final class InMemoryMatchRegistry {
                 return Optional.empty();
             }
             MatchParticipant updated = new MatchParticipant(
-                    current.playerId(), matchId, ParticipantRole.SPECTATOR, ParticipantState.SPECTATING, current.joinedAt());
+                    current.playerId(), matchId, ParticipantRole.SPECTATOR, ParticipantState.SPECTATING, current.joinedAt(), current.partyId());
             participants.put(playerId, updated);
             return Optional.of(updated);
         }
@@ -176,8 +177,15 @@ public final class InMemoryMatchRegistry {
                 return Optional.empty();
             }
             MatchParticipant updated = new MatchParticipant(
-                    current.playerId(), matchId, current.role(), ParticipantState.LEFT, current.joinedAt());
+                    current.playerId(), matchId, current.role(), ParticipantState.LEFT, current.joinedAt(), current.partyId());
             return Optional.of(updated);
+        }
+
+        public List<MatchParticipant> participantsOfParty(PartyId partyId) {
+            if (partyId == null) return List.of();
+            return participants.values().stream()
+                    .filter(p -> p.partyId().filter(partyId::equals).isPresent())
+                    .toList();
         }
 
         public MatchSnapshot snapshot() {

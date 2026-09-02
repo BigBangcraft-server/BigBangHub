@@ -2,6 +2,7 @@ package com.bigbangcraft.hub.api;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 public record AdmissionTicket(
@@ -12,7 +13,20 @@ public record AdmissionTicket(
         ParticipantRole role,
         Instant issuedAt,
         Instant expiresAt,
-        String token) {
+        String token,
+        Optional<PartyId> partyId) {
+
+    public AdmissionTicket(
+            UUID ticketId,
+            UUID playerId,
+            MatchId matchId,
+            ServerId instanceId,
+            ParticipantRole role,
+            Instant issuedAt,
+            Instant expiresAt,
+            String token) {
+        this(ticketId, playerId, matchId, instanceId, role, issuedAt, expiresAt, token, Optional.empty());
+    }
 
     public AdmissionTicket {
         Objects.requireNonNull(ticketId, "ticketId");
@@ -23,6 +37,7 @@ public record AdmissionTicket(
         Objects.requireNonNull(issuedAt, "issuedAt");
         Objects.requireNonNull(expiresAt, "expiresAt");
         Objects.requireNonNull(token, "token");
+        Objects.requireNonNull(partyId, "partyId");
         if (expiresAt.isBefore(issuedAt)) {
             throw new IllegalArgumentException("expiresAt cannot be before issuedAt");
         }

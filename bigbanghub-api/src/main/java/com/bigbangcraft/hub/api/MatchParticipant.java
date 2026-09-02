@@ -2,6 +2,7 @@ package com.bigbangcraft.hub.api;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 public record MatchParticipant(
@@ -9,7 +10,17 @@ public record MatchParticipant(
         MatchId matchId,
         ParticipantRole role,
         ParticipantState state,
-        Instant joinedAt) {
+        Instant joinedAt,
+        Optional<PartyId> partyId) {
+
+    public MatchParticipant(
+            UUID playerId,
+            MatchId matchId,
+            ParticipantRole role,
+            ParticipantState state,
+            Instant joinedAt) {
+        this(playerId, matchId, role, state, joinedAt, Optional.empty());
+    }
 
     public MatchParticipant {
         Objects.requireNonNull(playerId, "playerId");
@@ -17,6 +28,7 @@ public record MatchParticipant(
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(joinedAt, "joinedAt");
+        Objects.requireNonNull(partyId, "partyId");
     }
 
     public boolean isSpectator() {

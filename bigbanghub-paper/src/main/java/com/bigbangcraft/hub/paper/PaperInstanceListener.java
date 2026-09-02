@@ -21,7 +21,7 @@ final class PaperInstanceListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
         org.bukkit.entity.Player player = event.getPlayer();
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) return;
             if (!agent.isRegistered()) {
                 agent.sendRegister();
@@ -31,7 +31,7 @@ final class PaperInstanceListener implements Listener {
             if (plugin.matchManager() != null) {
                 plugin.matchManager().handlePlayerJoin(player);
             }
-        });
+        }, 20L);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

@@ -1,6 +1,8 @@
 package com.bigbangcraft.hub.velocity;
 
+import com.bigbangcraft.hub.api.AdmissionTicket;
 import com.bigbangcraft.hub.api.BigBangHubApi;
+import com.bigbangcraft.hub.api.DisconnectPolicy;
 import com.bigbangcraft.hub.api.GameId;
 import com.bigbangcraft.hub.api.GameRegistry;
 import com.bigbangcraft.hub.api.GameState;
@@ -12,26 +14,46 @@ import com.bigbangcraft.hub.api.InstanceRegistry;
 import com.bigbangcraft.hub.api.InstanceService;
 import com.bigbangcraft.hub.api.InstanceSnapshot;
 import com.bigbangcraft.hub.api.InstanceStateChangedEvent;
+import com.bigbangcraft.hub.api.MatchAbortedEvent;
+import com.bigbangcraft.hub.api.MatchCreatedEvent;
+import com.bigbangcraft.hub.api.MatchDefinition;
+import com.bigbangcraft.hub.api.MatchEvent;
+import com.bigbangcraft.hub.api.MatchException;
+import com.bigbangcraft.hub.api.MatchFinishedEvent;
+import com.bigbangcraft.hub.api.MatchId;
+import com.bigbangcraft.hub.api.MatchManager;
+import com.bigbangcraft.hub.api.MatchParticipant;
+import com.bigbangcraft.hub.api.MatchParticipantLeftEvent;
+import com.bigbangcraft.hub.api.MatchResult;
+import com.bigbangcraft.hub.api.MatchSnapshot;
+import com.bigbangcraft.hub.api.MatchState;
+import com.bigbangcraft.hub.api.MatchStateChangedEvent;
+import com.bigbangcraft.hub.api.ParticipantRole;
+import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerTransferService;
 import com.bigbangcraft.hub.api.QueueEvent;
 import com.bigbangcraft.hub.api.QueueResult;
 import com.bigbangcraft.hub.api.QueueService;
 import com.bigbangcraft.hub.api.Reservation;
+import com.bigbangcraft.hub.api.ReturnReason;
 import com.bigbangcraft.hub.api.RoutingService;
 import com.bigbangcraft.hub.api.ServerDefinition;
 import com.bigbangcraft.hub.api.ServerId;
 import com.bigbangcraft.hub.api.ServerRegistry;
 import com.bigbangcraft.hub.api.ServerRole;
+import com.bigbangcraft.hub.common.AdmissionTicketService;
 import com.bigbangcraft.hub.common.ConfigException;
 import com.bigbangcraft.hub.common.ConfigLoader;
 import com.bigbangcraft.hub.common.HubConfigSnapshot;
 import com.bigbangcraft.hub.common.InMemoryGameRegistry;
 import com.bigbangcraft.hub.common.InMemoryInstanceRegistry;
+import com.bigbangcraft.hub.common.InMemoryMatchRegistry;
 import com.bigbangcraft.hub.common.InMemoryQueueService;
 import com.bigbangcraft.hub.common.InMemoryReservationService;
 import com.bigbangcraft.hub.common.InMemoryServerRegistry;
 import com.bigbangcraft.hub.common.InstanceAwareRoutingService;
 import com.bigbangcraft.hub.common.InstanceEventBus;
+import com.bigbangcraft.hub.common.MatchEventBus;
 import com.bigbangcraft.hub.common.MessagePayloads;
 import com.bigbangcraft.hub.common.MessageType;
 import com.bigbangcraft.hub.common.ProtocolCodec;
@@ -65,6 +87,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -76,7 +102,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.2.0", authors = {"BigBangCraft"})
+@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.3.0", authors = {"BigBangCraft"})
 public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final ProxyServer proxy;
     private final Logger logger;
@@ -90,15 +116,22 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final Map<UUID, Long> lastRequestNanos = new ConcurrentHashMap<>();
     private final Map<String, Long> backendLastRequestNanos = new ConcurrentHashMap<>();
 
-    // Internal metrics counters
+    // Telemetry and operational metrics
     private final AtomicLong registrationsCount = new AtomicLong();
     private final AtomicLong heartbeatsReceivedCount = new AtomicLong();
     private final AtomicLong heartbeatsRejectedCount = new AtomicLong();
+    private final AtomicLong matchesCreatedCount = new AtomicLong();
+    private final AtomicLong matchesStartedCount = new AtomicLong();
+    private final AtomicLong matchesFinishedCount = new AtomicLong();
+    private final AtomicLong matchesAbortedCount = new AtomicLong();
+    private final AtomicLong admissionsAcceptedCount = new AtomicLong();
+    private final AtomicLong admissionsRejectedCount = new AtomicLong();
     private final AtomicLong routingAttemptsCount = new AtomicLong();
     private final AtomicLong routingFailuresCount = new AtomicLong();
     private final AtomicLong transfersInitiatedCount = new AtomicLong();
     private final AtomicLong transfersSucceededCount = new AtomicLong();
     private final AtomicLong transfersFailedCount = new AtomicLong();
+    private final AtomicLong returnFailuresCount = new AtomicLong();
     private final AtomicLong reservationExpirationsCount = new AtomicLong();
 
     private MinecraftChannelIdentifier channel;
@@ -106,6 +139,10 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private InMemoryQueueService queues;
     private InMemoryInstanceRegistry instanceRegistry;
     private InMemoryReservationService reservationService;
+    private InMemoryMatchRegistry matchRegistry;
+    private AdmissionTicketService ticketService;
+    private MatchEventBus matchEventBus;
+    private VelocityMatchManager matchManager;
     private InstanceEventBus instanceEventBus;
     private InstanceAwareRoutingService instanceRouting;
     private VelocityTransferService transfers;
@@ -133,7 +170,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("queue").plugin(this).build(),
                     new VelocityCommands(this, true));
-            logger.info("BigBangHub Velocity 0.2.0 enabled with {} games", games().games().size());
+            logger.info("BigBangHub Velocity 0.3.0 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
             proxy.shutdown();
@@ -145,6 +182,8 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         if (livenessTask != null) livenessTask.cancel();
         if (channel != null) proxy.getChannelRegistrar().unregister(channel);
         for (ServerInfo server : ownedServers) proxy.unregisterServer(server);
+        if (ticketService != null) ticketService.clear();
+        if (matchRegistry != null) matchRegistry.clear();
         if (reservationService != null) reservationService.clear();
         if (instanceRegistry != null) instanceRegistry.clear();
         if (queues != null) queues.clear();
@@ -157,6 +196,12 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         inFlightTransfers.remove(playerId);
         if (queues != null) queues.removePlayer(playerId);
         if (reservationService != null) reservationService.cancel(playerId, "player disconnected");
+        if (ticketService != null) ticketService.invalidateForPlayer(playerId);
+        if (matchRegistry != null) {
+            matchRegistry.findActiveForPlayer(playerId).ifPresent(match -> {
+                matchRegistry.removePlayer(match.matchId(), playerId, "player disconnected", Instant.now());
+            });
+        }
     }
 
     @Subscribe
@@ -169,7 +214,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             boolean confirmed = reservationService.confirm(player.getUniqueId(), serverId);
             if (confirmed) {
                 transfersSucceededCount.incrementAndGet();
-                logger.info("Confirmed reservation and arrival of player {} on {}", player.getUsername(), serverId);
+                logger.info("Confirmed reservation of player {} on {}", player.getUsername(), serverId);
             }
         }
         inFlightTransfers.remove(player.getUniqueId());
@@ -187,6 +232,14 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
         if (reservationService != null) {
             reservationService.cancel(player.getUniqueId(), "kicked from server");
+        }
+        if (ticketService != null) {
+            ticketService.invalidateForPlayer(player.getUniqueId());
+        }
+        if (matchRegistry != null) {
+            matchRegistry.findActiveForPlayer(player.getUniqueId()).ifPresent(match -> {
+                matchRegistry.removePlayer(match.matchId(), player.getUniqueId(), "kicked from server", Instant.now());
+            });
         }
         inFlightTransfers.remove(player.getUniqueId());
 
@@ -215,6 +268,14 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 case INSTANCE_STATE_CHANGE -> handleInstanceStateChange(connection, envelope);
                 case INSTANCE_UNREGISTER -> handleInstanceUnregister(connection, envelope);
                 case SERVER_STATUS -> handleServerStatus(connection, envelope);
+                case MATCH_CREATE -> handleMatchCreate(connection, envelope);
+                case MATCH_STATE_CHANGE -> handleMatchStateChange(connection, envelope);
+                case ADMISSION_REQUEST -> handleAdmissionRequest(connection, envelope);
+                case PARTICIPANT_STATE_CHANGE -> handleParticipantStateChange(connection, envelope);
+                case MATCH_FINISH -> handleMatchFinish(connection, envelope);
+                case MATCH_ABORT -> handleMatchAbort(connection, envelope);
+                case INSTANCE_READY -> handleInstanceReady(connection, envelope);
+                case PLAYER_RETURN -> handlePlayerReturn(connection, envelope);
                 default -> {
                     if (backendName.equals(snapshot.proxy().hubServerName())) {
                         Player player = connection.getPlayer();
@@ -255,6 +316,11 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             InMemoryInstanceRegistry.RegisterOutcome outcome = instanceRegistry.register(
                     reg, System.nanoTime(), Instant.now());
             logger.info("Instance {} registered ({}) for game {}", reg.instanceId(), outcome, reg.gameId());
+
+            if (outcome == InMemoryInstanceRegistry.RegisterOutcome.REPLACED) {
+                // If instance process rebooted, clean up any previous match
+                matchRegistry.reconcileInstanceCrashOrShutdown(reg.instanceId(), null, Instant.now());
+            }
 
             send(connection, new ProtocolEnvelope(1, MessageType.INSTANCE_REGISTER_ACK, envelope.correlationId(),
                     MessagePayloads.instanceRegisterAck(new MessagePayloads.InstanceRegisterAck(
@@ -318,9 +384,267 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             InMemoryInstanceRegistry.UnregisterOutcome outcome = instanceRegistry.unregister(
                     unreg.instanceId(), unreg.sessionId(), unreg.reason());
             logger.info("Instance {} unregistered: {} ({})", unreg.instanceId(), outcome, unreg.reason());
+            matchRegistry.reconcileInstanceCrashOrShutdown(unreg.instanceId(), unreg.sessionId(), Instant.now());
             instanceRegistry.find(unreg.instanceId()).ifPresent(inst -> dispatchQueue(inst.gameId()));
         } catch (ProtocolValidationException e) {
             logger.warn("Invalid unregister payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleMatchCreate(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.MatchCreate create = MessagePayloads.matchCreate(envelope.payload());
+            if (!validateBackendIdentity(connection, create.instanceId(), create.gameId())) {
+                send(connection, new ProtocolEnvelope(1, MessageType.MATCH_CREATE_ACK, envelope.correlationId(),
+                        MessagePayloads.matchCreateAck(new MessagePayloads.MatchCreateAck(
+                                create.matchId(), false, 0, "Unauthorized backend identity"))));
+                return;
+            }
+
+            Optional<InstanceSnapshot> inst = instanceRegistry.find(create.instanceId());
+            if (inst.isEmpty() || !inst.get().sessionId().equals(create.sessionId())) {
+                send(connection, new ProtocolEnvelope(1, MessageType.MATCH_CREATE_ACK, envelope.correlationId(),
+                        MessagePayloads.matchCreateAck(new MessagePayloads.MatchCreateAck(
+                                create.matchId(), false, 0, "Invalid or stale instance session"))));
+                return;
+            }
+
+            MatchDefinition definition = MatchDefinition.builder()
+                    .gameId(create.gameId())
+                    .minPlayers(create.minPlayers())
+                    .maxPlayers(create.maxPlayers())
+                    .allowLateJoin(create.allowLateJoin())
+                    .arenaId(create.arenaId().isBlank() ? null : create.arenaId())
+                    .build();
+
+            InMemoryMatchRegistry.MatchSessionState state = matchRegistry.createMatch(
+                    create.matchId(), definition, create.instanceId(), create.sessionId(), Instant.now());
+
+            send(connection, new ProtocolEnvelope(1, MessageType.MATCH_CREATE_ACK, envelope.correlationId(),
+                    MessagePayloads.matchCreateAck(new MessagePayloads.MatchCreateAck(
+                            create.matchId(), true, state.stateMachine().revision(), "Match created successfully"))));
+
+            logger.info("Match {} created on {} for game {}", create.matchId(), create.instanceId(), create.gameId());
+            dispatchQueue(create.gameId());
+        } catch (MatchException | ProtocolValidationException e) {
+            logger.warn("Failed to create match from backend: {}", e.getMessage());
+            try {
+                MessagePayloads.MatchCreate create = MessagePayloads.matchCreate(envelope.payload());
+                send(connection, new ProtocolEnvelope(1, MessageType.MATCH_CREATE_ACK, envelope.correlationId(),
+                        MessagePayloads.matchCreateAck(new MessagePayloads.MatchCreateAck(
+                                create.matchId(), false, 0, e.getMessage()))));
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void handleMatchStateChange(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.MatchStateChange change = MessagePayloads.matchStateChange(envelope.payload());
+            if (!validateBackendIdentity(connection, change.instanceId(), null)) return;
+
+            MatchState targetState = mapWireState(change.state());
+            Optional<MatchSnapshot> existing = matchRegistry.find(change.matchId());
+            if (existing.isEmpty()) {
+                send(connection, new ProtocolEnvelope(1, MessageType.MATCH_STATE_ACK, envelope.correlationId(),
+                        MessagePayloads.matchStateAck(new MessagePayloads.MatchStateAck(
+                                change.matchId(), change.revision(), change.state(), false, "Match not found"))));
+                return;
+            }
+
+            MatchState currentState = existing.get().state();
+            boolean transitioned = matchRegistry.transitionState(
+                    change.matchId(), change.sessionId(), change.revision(), currentState, targetState, Instant.now());
+
+            long currentRevision = matchRegistry.find(change.matchId()).map(MatchSnapshot::revision).orElse(change.revision());
+            send(connection, new ProtocolEnvelope(1, MessageType.MATCH_STATE_ACK, envelope.correlationId(),
+                    MessagePayloads.matchStateAck(new MessagePayloads.MatchStateAck(
+                            change.matchId(), currentRevision, change.state(), transitioned,
+                            transitioned ? "State updated" : "Transition rejected"))));
+
+            if (transitioned && targetState == MatchState.WAITING) {
+                dispatchQueue(existing.get().gameId());
+            }
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid match state change payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleAdmissionRequest(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.AdmissionRequest req = MessagePayloads.admissionRequest(envelope.payload());
+            if (!validateBackendIdentity(connection, req.instanceId(), null)) {
+                admissionsRejectedCount.incrementAndGet();
+                send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
+                        MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(
+                                req.ticketId(), req.playerId(), req.matchId(), false,
+                                MessagePayloads.ParticipantRoleWire.PLAYER, "Unauthorized backend"))));
+                return;
+            }
+
+            Instant now = Instant.now();
+            AdmissionTicket ticket = ticketService.consume(
+                    req.ticketId(), req.playerId(), req.matchId(), req.instanceId(), req.token(), now);
+            MatchParticipant participant = matchRegistry.admitPlayer(ticket, now);
+
+            admissionsAcceptedCount.incrementAndGet();
+            MessagePayloads.ParticipantRoleWire roleWire = (ticket.role() == ParticipantRole.SPECTATOR)
+                    ? MessagePayloads.ParticipantRoleWire.SPECTATOR : MessagePayloads.ParticipantRoleWire.PLAYER;
+
+            send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
+                    MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(
+                            req.ticketId(), req.playerId(), req.matchId(), true, roleWire, "Admitted successfully"))));
+
+            logger.info("Player {} admitted into match {} on {} ({})",
+                    req.playerId(), req.matchId(), req.instanceId(), ticket.role());
+        } catch (MatchException e) {
+            admissionsRejectedCount.incrementAndGet();
+            logger.warn("Admission rejected for ticket: {}", e.getMessage());
+            try {
+                MessagePayloads.AdmissionRequest req = MessagePayloads.admissionRequest(envelope.payload());
+                matchRegistry.releasePendingAdmission(req.matchId());
+                reservationService.cancel(req.playerId(), "admission rejected: " + e.getMessage());
+                send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
+                        MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(
+                                req.ticketId(), req.playerId(), req.matchId(), false,
+                                MessagePayloads.ParticipantRoleWire.PLAYER, e.getMessage()))));
+                safeReturnPlayerToHub(req.playerId(), ReturnReason.DIRECT_JOIN_REJECTED, e.getMessage());
+            } catch (Exception ignored) { }
+        } catch (ProtocolValidationException e) {
+            admissionsRejectedCount.incrementAndGet();
+            logger.warn("Malformed admission request: {}", e.getMessage());
+        }
+    }
+
+    private void handleParticipantStateChange(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.ParticipantStateChange change = MessagePayloads.participantStateChange(envelope.payload());
+            Instant now = Instant.now();
+            switch (change.state()) {
+                case ELIMINATED -> matchRegistry.eliminatePlayer(change.matchId(), change.playerId(), now);
+                case SPECTATING -> matchRegistry.setPlayerSpectator(change.matchId(), change.playerId(), now);
+                case LEFT -> matchRegistry.removePlayer(change.matchId(), change.playerId(), "left", now);
+                default -> { }
+            }
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid participant state change payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleMatchFinish(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.MatchFinish finish = MessagePayloads.matchFinish(envelope.payload());
+            if (!validateBackendIdentity(connection, finish.instanceId(), null)) return;
+
+            MatchResult.Outcome outcome = switch (finish.outcome()) {
+                case WIN -> MatchResult.Outcome.WIN;
+                case DRAW -> MatchResult.Outcome.DRAW;
+                case ABORTED -> MatchResult.Outcome.ABORTED;
+            };
+
+            MatchResult result = new MatchResult(
+                    outcome,
+                    new HashSet<>(finish.winnerIds()),
+                    Duration.ofMillis(finish.durationMillis()),
+                    Map.of());
+
+            boolean finished = matchRegistry.finishMatch(
+                    finish.matchId(), finish.sessionId(), finish.revision(), result, Instant.now());
+            if (finished) {
+                logger.info("Match {} finished on {} (outcome: {}, duration: {}ms)",
+                        finish.matchId(), finish.instanceId(), outcome, finish.durationMillis());
+                // Safe return all players
+                matchRegistry.findSession(finish.matchId()).ifPresent(session -> {
+                    safeReturnPlayersToHub(
+                            session.participants().stream().map(MatchParticipant::playerId).toList(),
+                            ReturnReason.MATCH_FINISHED, "Match ended");
+                });
+            }
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid match finish payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleMatchAbort(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.MatchAbort abort = MessagePayloads.matchAbort(envelope.payload());
+            if (!validateBackendIdentity(connection, abort.instanceId(), null)) return;
+
+            boolean aborted = matchRegistry.abortMatch(abort.matchId(), abort.reason(), Instant.now());
+            if (aborted) {
+                logger.info("Match {} aborted on {}: {}", abort.matchId(), abort.instanceId(), abort.reason());
+                matchRegistry.findSession(abort.matchId()).ifPresent(session -> {
+                    safeReturnPlayersToHub(
+                            session.participants().stream().map(MatchParticipant::playerId).toList(),
+                            ReturnReason.MATCH_ABORTED, abort.reason());
+                });
+            }
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid match abort payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleInstanceReady(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.InstanceReady ready = MessagePayloads.instanceReady(envelope.payload());
+            if (!validateBackendIdentity(connection, ready.instanceId(), null)) return;
+
+            boolean marked = matchRegistry.markInstanceReady(ready.instanceId(), ready.matchId(), Instant.now());
+            if (marked) {
+                logger.info("Instance {} confirmed cleanup complete for match {}; now READY",
+                        ready.instanceId(), ready.matchId());
+                instanceRegistry.find(ready.instanceId()).ifPresent(inst -> dispatchQueue(inst.gameId()));
+            }
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid instance ready payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePlayerReturn(ServerConnection connection, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PlayerReturn ret = MessagePayloads.playerReturn(envelope.payload());
+            ReturnReason reason = switch (ret.reason()) {
+                case MATCH_FINISHED -> ReturnReason.MATCH_FINISHED;
+                case MATCH_ABORTED -> ReturnReason.MATCH_ABORTED;
+                case PLAYER_ELIMINATED -> ReturnReason.PLAYER_ELIMINATED;
+                case PLAYER_LEFT -> ReturnReason.PLAYER_LEFT;
+                case SERVER_FAILURE -> ReturnReason.SERVER_FAILURE;
+                case ADMIN_FORCE_RETURN -> ReturnReason.ADMIN_FORCE_RETURN;
+                case DIRECT_JOIN_REJECTED -> ReturnReason.DIRECT_JOIN_REJECTED;
+            };
+            safeReturnPlayerToHub(ret.playerId(), reason, ret.message());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid player return payload: {}", e.getMessage());
+        }
+    }
+
+    public void safeReturnPlayerToHub(UUID playerId, ReturnReason reason, String message) {
+        HubConfigSnapshot snapshot = configSnapshot();
+        if (snapshot == null) return;
+        String hubName = snapshot.proxy().hubServerName();
+        Player player = proxy.getPlayer(playerId).orElse(null);
+        if (player == null || !player.isActive()) return;
+
+        RegisteredServer hubServer = proxy.getServer(hubName).orElse(null);
+        if (hubServer == null) {
+            returnFailuresCount.incrementAndGet();
+            logger.error("Safe return failed: Hub server '{}' is not registered in Velocity!", hubName);
+            return;
+        }
+
+        player.createConnectionRequest(hubServer).connect().thenAccept(result -> {
+            if (result.isSuccessful()) {
+                logger.info("Player {} safely returned to {} (reason: {})", player.getUsername(), hubName, reason);
+            } else {
+                returnFailuresCount.incrementAndGet();
+                logger.warn("Failed to safely return player {} to {}: {}",
+                        player.getUsername(), hubName, result.getReasonComponent().orElse(null));
+            }
+        });
+    }
+
+    public void safeReturnPlayersToHub(Collection<UUID> playerIds, ReturnReason reason, String message) {
+        for (UUID playerId : playerIds) {
+            safeReturnPlayerToHub(playerId, reason, message);
         }
     }
 
@@ -335,6 +659,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             if (player == null || !player.isActive()) {
                 queues.removePlayer(playerId);
                 reservationService.cancel(playerId, "player inactive");
+                ticketService.invalidateForPlayer(playerId);
                 continue;
             }
 
@@ -342,34 +667,74 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 break;
             }
 
-            Optional<InstanceSnapshot> selectedInstance = instanceRouting.selectInstance(gameId);
-            if (selectedInstance.isEmpty()) {
-                break;
+            // Route to active MatchSession first (preferring FILL_EXISTING_MATCH)
+            Collection<MatchSnapshot> activeMatches = matchRegistry.activeMatchesForGame(gameId);
+            MatchSnapshot targetMatch = activeMatches.stream()
+                    .filter(MatchSnapshot::canAcceptParticipants)
+                    .filter(m -> instanceRegistry.find(m.instanceId()).map(InstanceSnapshot::canAcceptPlayers).orElse(false))
+                    .max(Comparator.comparingInt(m -> m.participantCount() + m.pendingAdmissions()))
+                    .orElse(null);
+
+            ServerId targetInstanceId;
+            MatchId targetMatchId;
+
+            if (targetMatch != null) {
+                targetInstanceId = targetMatch.instanceId();
+                targetMatchId = targetMatch.matchId();
+            } else {
+                // Fallback: check if an instance exists with no active match
+                Optional<InstanceSnapshot> candidateInst = instanceRouting.selectInstance(gameId);
+                if (candidateInst.isEmpty()) {
+                    break;
+                }
+                InstanceSnapshot inst = candidateInst.get();
+                if (matchRegistry.findActiveForInstance(inst.instanceId()).isPresent()) {
+                    break;
+                }
+                targetInstanceId = inst.instanceId();
+                targetMatchId = null;
             }
 
-            InstanceSnapshot target = selectedInstance.get();
+            Instant now = Instant.now();
             Optional<Reservation> reservation = reservationService.reserve(
-                    target.instanceId(), playerId, gameId, Instant.now());
+                    targetInstanceId, playerId, gameId, now);
             if (reservation.isEmpty()) {
                 break;
             }
 
+            // If routing into existing match, reserve match admission slot
+            if (targetMatchId != null) {
+                if (!matchRegistry.reserveAdmission(targetMatchId)) {
+                    reservationService.cancel(playerId, "match admission reservation failed");
+                    break;
+                }
+            }
+
+            Duration admissionTtl = configSnapshot().match().admissionTimeout();
+            AdmissionTicket ticket = (targetMatchId != null)
+                    ? ticketService.issue(playerId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl)
+                    : null;
+
             inFlightTransfers.add(playerId);
             routingAttemptsCount.incrementAndGet();
-            QueueResult assigned = queues.assign(playerId, gameId, target.instanceId());
+            QueueResult assigned = queues.assign(playerId, gameId, targetInstanceId);
             if (assigned.code() != QueueResult.Code.ASSIGNED) {
                 reservationService.cancel(playerId, "queue assign failed");
+                if (targetMatchId != null) matchRegistry.releasePendingAdmission(targetMatchId);
+                if (ticket != null) ticketService.invalidate(ticket.ticketId());
                 inFlightTransfers.remove(playerId);
                 break;
             }
 
-            player.sendPlainMessage("Partida encontrada no servidor " + target.instanceId() + "! Conectando...");
+            player.sendPlainMessage("Partida encontrada no servidor " + targetInstanceId + "! Conectando...");
             transfersInitiatedCount.incrementAndGet();
-            transfers.transfer(playerId, target.instanceId()).thenAccept(result -> {
+            transfers.transfer(playerId, targetInstanceId).thenAccept(result -> {
                 if (!result.success()) {
                     transfersFailedCount.incrementAndGet();
                     routingFailuresCount.incrementAndGet();
                     reservationService.cancel(playerId, "transfer connection failed");
+                    if (targetMatchId != null) matchRegistry.releasePendingAdmission(targetMatchId);
+                    if (ticket != null) ticketService.invalidate(ticket.ticketId());
                     inFlightTransfers.remove(playerId);
                     Player p = proxy.getPlayer(playerId).orElse(null);
                     if (p != null && p.isActive()) {
@@ -402,6 +767,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                         reservationService.find(resId).ifPresent(res ->
                                 reservationService.cancel(res.playerId(), "instance became unavailable"));
                     }
+                    matchRegistry.reconcileInstanceCrashOrShutdown(t.instanceId(), null, now);
                     instanceRegistry.find(t.instanceId()).ifPresent(inst -> dispatchQueue(inst.gameId()));
                 }
             }
@@ -416,8 +782,11 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                     dispatchQueue(res.gameId());
                 }
             }
+
+            ticketService.sweepExpired(now);
+            matchRegistry.sweepTombstones(now);
         } catch (Exception e) {
-            logger.error("Error in liveness and reservation sweep", e);
+            logger.error("Error in liveness, reservation, and match sweep", e);
         }
     }
 
@@ -609,6 +978,11 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         instanceRouting = new InstanceAwareRoutingService(nextGames, instanceRegistry, nextServers);
         transfers = new VelocityTransferService(proxy, instanceRegistry, nextServers);
 
+        matchEventBus = new MatchEventBus();
+        matchRegistry = new InMemoryMatchRegistry(matchEventBus, snapshot.match().finishedRetention());
+        ticketService = new AdmissionTicketService(snapshot.match().admissionTimeout());
+        matchManager = new VelocityMatchManager(this, matchRegistry);
+
         games.set(nextGames);
         servers.set(nextServers);
         routing.set(instanceRouting);
@@ -633,6 +1007,27 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 if (stateEvent.newState() == GameState.WAITING) {
                     instanceRegistry.find(stateEvent.instanceId()).ifPresent(inst -> dispatchQueue(inst.gameId()));
                 }
+            }
+        });
+
+        matchEventBus.add(event -> {
+            if (event instanceof MatchCreatedEvent created) {
+                matchesCreatedCount.incrementAndGet();
+                dispatchQueue(created.match().gameId());
+            } else if (event instanceof MatchStateChangedEvent changed) {
+                if (changed.newState() == MatchState.IN_GAME) {
+                    matchesStartedCount.incrementAndGet();
+                } else if (changed.newState() == MatchState.FINISHED) {
+                    matchesFinishedCount.incrementAndGet();
+                } else if (changed.newState() == MatchState.ABORTED) {
+                    matchesAbortedCount.incrementAndGet();
+                } else if (changed.newState() == MatchState.WAITING) {
+                    matchRegistry.find(changed.matchId()).ifPresent(m -> dispatchQueue(m.gameId()));
+                }
+            } else if (event instanceof MatchParticipantLeftEvent left) {
+                matchRegistry.find(left.matchId()).ifPresent(m -> {
+                    if (m.canAcceptParticipants()) dispatchQueue(m.gameId());
+                });
             }
         });
 
@@ -678,22 +1073,45 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         return new ProtocolCodec(secret, snapshot.proxy().maxPayloadBytes(), snapshot.proxy().requireHmac());
     }
 
+    private static MatchState mapWireState(MessagePayloads.MatchStateWire wire) {
+        return switch (wire) {
+            case CREATED -> MatchState.CREATED;
+            case WAITING -> MatchState.WAITING;
+            case COUNTDOWN -> MatchState.COUNTDOWN;
+            case LOCKED -> MatchState.LOCKED;
+            case IN_GAME -> MatchState.IN_GAME;
+            case ENDING -> MatchState.ENDING;
+            case FINISHED -> MatchState.FINISHED;
+            case ABORTED -> MatchState.ABORTED;
+        };
+    }
+
     InMemoryServerRegistry serversMutable() { return (InMemoryServerRegistry) servers.get(); }
-    HubConfigSnapshot configSnapshot() { return Objects.requireNonNull(config.get(), "plugin is not enabled"); }
-    ProxyServer proxy() { return proxy; }
+    public HubConfigSnapshot configSnapshot() { return Objects.requireNonNull(config.get(), "plugin is not enabled"); }
+    public ProxyServer proxy() { return proxy; }
+    public Logger getLogger() { return logger; }
     public InMemoryInstanceRegistry instanceRegistry() { return instanceRegistry; }
     public InMemoryReservationService reservationService() { return reservationService; }
     public InMemoryQueueService queueService() { return queues; }
+    public InMemoryMatchRegistry matchRegistry() { return matchRegistry; }
+    public AdmissionTicketService ticketService() { return ticketService; }
 
-    // Metric accessors
+    // Telemetry metric accessors
     public long registrationsCount() { return registrationsCount.get(); }
     public long heartbeatsReceivedCount() { return heartbeatsReceivedCount.get(); }
     public long heartbeatsRejectedCount() { return heartbeatsRejectedCount.get(); }
+    public long matchesCreatedCount() { return matchesCreatedCount.get(); }
+    public long matchesStartedCount() { return matchesStartedCount.get(); }
+    public long matchesFinishedCount() { return matchesFinishedCount.get(); }
+    public long matchesAbortedCount() { return matchesAbortedCount.get(); }
+    public long admissionsAcceptedCount() { return admissionsAcceptedCount.get(); }
+    public long admissionsRejectedCount() { return admissionsRejectedCount.get(); }
     public long routingAttemptsCount() { return routingAttemptsCount.get(); }
     public long routingFailuresCount() { return routingFailuresCount.get(); }
     public long transfersInitiatedCount() { return transfersInitiatedCount.get(); }
     public long transfersSucceededCount() { return transfersSucceededCount.get(); }
     public long transfersFailedCount() { return transfersFailedCount.get(); }
+    public long returnFailuresCount() { return returnFailuresCount.get(); }
     public long reservationExpirationsCount() { return reservationExpirationsCount.get(); }
 
     @Override public ServerRole role() { return ServerRole.GENERIC; }
@@ -701,6 +1119,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public ServerRegistry servers() { return servers.get(); }
     @Override public InstanceRegistry instances() { return instanceRegistry; }
     @Override public Optional<InstanceService> instance() { return Optional.empty(); }
+    @Override public MatchManager matches() { return matchManager; }
     @Override public QueueService queues() { return queues; }
     @Override public RoutingService routing() { return routing.get(); }
     @Override public PlayerTransferService transfers() { return transfers; }
@@ -708,4 +1127,6 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public void removeQueueListener(Consumer<QueueEvent> listener) { queues.removeListener(listener); }
     @Override public void addInstanceListener(Consumer<InstanceEvent> listener) { instanceEventBus.add(listener); }
     @Override public void removeInstanceListener(Consumer<InstanceEvent> listener) { instanceEventBus.remove(listener); }
+    @Override public void addMatchListener(Consumer<MatchEvent> listener) { matchEventBus.add(listener); }
+    @Override public void removeMatchListener(Consumer<MatchEvent> listener) { matchEventBus.remove(listener); }
 }

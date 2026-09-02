@@ -1181,6 +1181,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             ticketService.sweepExpired(now);
             matchRegistry.sweepTombstones(now);
             if (partyService != null) partyService.sweep();
+            if (rematchService != null) rematchService.sweep(now);
         } catch (Exception e) {
             logger.error("Error in liveness, reservation, and match sweep", e);
         }

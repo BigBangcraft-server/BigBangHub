@@ -1,12 +1,121 @@
-# Configuração
+# Configuração (BigBangHub 0.2.0)
 
-Paper e Velocity carregam `config.yml`, `menus.yml`, `games.yml`, `servers.yml`
-e `messages.yml` da pasta de dados do plugin. O snapshot só troca depois de
-validar todos os arquivos.
+O BigBangHub carrega `config.yml`, `menus.yml`, `games.yml`, `servers.yml` e `messages.yml` da pasta de dados do plugin tanto no Paper quanto no Velocity.
 
-## Menu e bússola
+---
 
-O formato padrão mantém a configuração do item e do menu no mesmo bloco:
+## 1. Papel do Servidor (`server.role`)
+
+No Paper, defina a responsabilidade do processo:
+
+```yaml
+server:
+  role: HUB # Opções: HUB, MINIGAME, GENERIC
+```
+
+### Configuração de Minigame Agent (`role: MINIGAME`):
+Quando um servidor roda como minigame (ex: Campo Minado, BedWars, HG), configure o bloco `instance`:
+
+```yaml
+server:
+  role: MINIGAME
+  instance:
+    instance-id: campominado-01
+    game-id: campominado
+    server-name: campominado-01 # Nome correspondente no Velocity
+    heartbeat:
+      interval: 3s
+    capacity:
+      min-players: 2
+      max-players: 10
+    accepting-players: true
+```
+
+*Nota: Em servidores com papel `MINIGAME`, o plugin não registra proteções de lobby nem a bússola de navegação, dedicando-se exclusivamente ao ciclo de vida da instância.*
+
+---
+
+## 2. Configuração de Registro e Roteamento no Velocity
+
+No `config.yml` do Velocity:
+
+```yaml
+registry:
+  heartbeat-timeout: 10s   # Tempo para degradar para UNAVAILABLE
+  suspect-threshold: 5s    # Tempo para degradar para SUSPECT
+  fallback-to-hub: true    # Redirecionar jogadores ao Hub em caso de queda do minigame
+  allowed:
+    "campominado-*":
+      game-id: campominado
+    "bedwars-*":
+      game-id: bedwars
+    "hg-*":
+      game-id: hg
+
+routing:
+  reservation-ttl: 10s     # Tempo limite para expiração de reservas não confirmadas
+
+proxy:
+  channel: bigbanghub:main
+  protocol-version: 1
+  hub-server-name: hubminigame
+  shared-secret-environment: BIGBANGHUB_MESSAGE_SECRET
+  require-hmac: false
+  max-payload-bytes: 16384
+```
+
+---
+
+## 3. Jogos e Estratégias de Roteamento (`games.yml`)
+
+As estratégias de matchmaking disponíveis para cada minigame são:
+- `FILL_WAITING` (Padrão): Preenche servidores que já estão esperando por jogadores.
+- `LEAST_PLAYERS`: Distribui a carga entre as instâncias disponíveis.
+- `ROUND_ROBIN`: Alterna ciclicamente entre as instâncias elegíveis.
+
+```yaml
+games:
+  campominado:
+    display-name: Campo Minado
+    enabled: true
+    queue:
+      enabled: true
+      min-players: 2
+      max-players: 10
+      strategy: FILL_WAITING
+
+  bedwars:
+    display-name: BedWars
+    enabled: true
+    queue:
+      enabled: true
+      min-players: 4
+      max-players: 16
+      strategy: FILL_WAITING
+```
+
+---
+
+## 4. Servidores Estáticos de Fallback (`servers.yml`)
+
+Utilizados como bootstrap e para retrocompatibilidade quando nenhum agente dinâmico ainda se registrou:
+
+```yaml
+servers:
+  campominado:
+    game: campominado
+    host: 10.8.0.2
+    port: 25567
+    state: WAITING
+    player-count: 0
+    max-players: 10
+```
+
+---
+
+## 5. Bússola e Menus (`menus.yml`)
+
+Utilizado no servidor com papel `role: HUB`:
 
 ```yaml
 compass:
@@ -30,55 +139,21 @@ compass:
         value: campominado
 ```
 
-O item é identificado pelo `PersistentDataContainer`, não por nome/material.
-Slots são únicos e ficam dentro do inventário/menu. Conteúdo MiniMessage e
-materiais/flags são compilados ao carregar; clique não lê YAML.
+Tipos de ação suportados: `QUEUE`, `SERVER`, `PLAYER_COMMAND`, `CONSOLE_COMMAND`, `CLOSE`, `MESSAGE`, `SOUND`.
 
-Tipos de ação: `PLAYER_COMMAND`, `CONSOLE_COMMAND`, `SERVER`, `QUEUE`, `CLOSE`,
-`MESSAGE` e `SOUND`. `PLAYER_COMMAND` pode apontar para alias configurado, por
-exemplo `campominado`, e convergirá para `QUEUE`. `CONSOLE_COMMAND` exige
-`allow-console-commands: true` e o primeiro comando na allowlist; está desligado
-por padrão.
+---
 
-## Jogos e servidores
+## 6. Proteções do Lobby e Inventário
+
+Ativas no `HUB` para preservar o spawn contra quebras, danos, fome e quedas no void:
 
 ```yaml
-games:
-  campominado:
-    display-name: Campo Minado
-    enabled: true
-    queue:
-      enabled: true
-      min-players: 2
-      max-players: 10
-      strategy: FILL_WAITING
-```
-
-```yaml
-servers:
-  campominado:
-    game: campominado
-    host: 10.8.0.2
-    port: 25567
-    state: WAITING
-    player-count: 0
-    max-players: 10
-```
-
-`host` e `port` só são consumidos pelo Velocity para registrar o destino; nunca
-são aceitos no payload do cliente. Os defaults usam os três servidores reais:
-`bedwars:25566`, `campominado:25567` e `hg:25568` em `10.8.0.2`.
-
-## Aliases, proteção e inventário
-
-```yaml
-aliases:
-  campominado: campominado
 inventory:
   clear-on-join: true
   lock-lobby-items: true
   prevent-drop: true
   prevent-move: true
+
 protection:
   block-break: true
   block-place: true
@@ -87,29 +162,16 @@ protection:
   damage: true
   pvp: true
   hunger: true
+  mob-interactions: true
+  crafting: true
   inventory-manipulation: true
+  weather: true
+  farmland-trampling: true
+  armor-stand-interaction: true
+  entity-interaction: true
+  bucket-use: true
+  fire: true
+  explosions: true
+  fluid-placement: true
   void-safety: true
 ```
-
-As demais flags de proteção (`mob-interactions`, `crafting`, `weather`,
-`farmland-trampling`, `armor-stand-interaction`, `entity-interaction`,
-`bucket-use`, `fire`, `explosions` e `fluid-placement`) seguem o mesmo padrão.
-Interação da bússola é tratada antes de filtros de bloco; NPCs e menus não são
-cancelados indiscriminadamente.
-
-## Proxy e reload
-
-```yaml
-proxy:
-  channel: bigbanghub:main
-  protocol-version: 1
-  hub-server-name: hubminigame
-  shared-secret-environment: BIGBANGHUB_MESSAGE_SECRET
-  require-hmac: false
-  max-payload-bytes: 16384
-```
-
-`/bbhub reload` recarrega menus, jogos, servidores, mensagens e flags sem limpar
-filas. Canal, versão, limite e autenticação são startup-only; alteração deles é
-rejeitada com mensagem de restart. Erros como `Unknown action type: SERVRE` ou
-slot/game/ID inválido apontam o caminho do arquivo e preservam o snapshot anterior.

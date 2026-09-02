@@ -1,83 +1,94 @@
-# Arquitetura
+# Arquitetura (BigBangHub 0.2.0)
 
 ```text
 Player
-  -> Velocity + BigBangHub Velocity
-  -> Hub Paper + BigBangHub Paper
-  -> Compass / NPC alias / commands
-  -> versioned plugin message
-  -> QueueService
-  -> RoutingService
-  -> selected RegisteredServer
-  -> minigame backend
+  -> Velocity 4.1.1 + BigBangHub Velocity
+       ├── InMemoryInstanceRegistry (Instances, Health, Sessions)
+       ├── InMemoryReservationService (Slots com TTL)
+       ├── InMemoryQueueService (FIFO, Event-driven)
+       └── InstanceAwareRoutingService (FILL_WAITING, LEAST_PLAYERS, ROUND_ROBIN)
+  -> Hub Paper (Role: HUB)
+       └── Compass / Menus / Lobby Protection / Alias Commands
+  -> Minigame Paper (Role: MINIGAME)
+       └── PaperInstanceAgent (Heartbeats, SessionId, State, Capacity)
 ```
 
-## Limites
+## 1. Módulos e Responsabilidades
 
-`bigbanghub-api` contém somente contratos, identificadores validados, estados e
-resultados. `bigbanghub-common` não importa Bukkit nem Velocity: mantém a fila,
-o algoritmo de roteamento, o parser de configuração e o protocolo binário.
-`bigbanghub-paper` é dono da experiência no hub e nunca escolhe IP/porta.
-`bigbanghub-velocity` é dono da fila e valida qualquer destino antes de conectar.
+- **`bigbanghub-api`**: Contratos puros, records imutáveis, enums de lifecycle (`ServerRole`, `InstanceHealth`, `ReservationState`, `GameState`), eventos observacionais e interfaces (`InstanceRegistry`, `InstanceService`, `QueueService`, `RoutingService`, `PlayerTransferService`). Livre de dependências externas.
+- **`bigbanghub-common`**: Implementações centrais desacopladas de Minecraft:
+  - `InMemoryInstanceRegistry`: Tabela thread-safe de instâncias ativas, substituição atômica de sessões e sweep de liveness.
+  - `InMemoryReservationService`: Alocação concorrente de vagas com TTL e expiração automática.
+  - `InMemoryQueueService`: Fila com ordem FIFO estrita e rastreamento de tempos de espera.
+  - `InstanceAwareRoutingService`: Políticas de roteamento (`FILL_WAITING`, `LEAST_PLAYERS`, `ROUND_ROBIN`) com desempate determinístico.
+  - `ProtocolCodec` e `MessagePayloads`: Serialização binária em envelopes `BBH1` com versionamento e HMAC opcional.
+  - `ConfigLoader`: Parser rigoroso com validação de snapshots atômicos imutáveis.
+- **`bigbanghub-velocity`**: Orquestrador do cluster. Mantém o registro em memória, gerencia o ciclo de vida das instâncias e reservas, despacha filas orientado a eventos, confirma conexões via `ServerPostConnectEvent`, redireciona quedas de volta ao Hub via `KickedFromServerEvent`, e provê comandos administrativos e métricas leves.
+- **`bigbanghub-paper`**: Plugin unificado para Paper 26.2 (Java 25).
+  - Em `role: HUB`: Ativa menu de bússola, proteções completas de lobby, atalhos de minigame e fila.
+  - Em `role: MINIGAME`: Ativa o `PaperInstanceAgent`, publica o estado via `InstanceService`, envia heartbeats periódicos a cada 3s e sincroniza entradas/saídas de jogadores.
 
-O plugin não conhece regras de BedWars, Campo Minado ou HG. Os IDs atuais vêm da
-rede real: `bedwars`, `campominado` e `hg`; o documento de infraestrutura usa
-`campominado`, sem hífen.
+---
 
-## Topologia real considerada
+## 2. Topologia Operacional Real
 
-- Internet -> ubuntu2, Velocity 4.1.1 em `10.8.0.1:25565`.
-- WireGuard -> brainiac em `10.8.0.2`.
-- Hub Paper 26.2-120 em `10.8.0.2:25565`.
-- BedWars, diretório `bedward`, em `25566`.
-- Campo Minado em `25567`.
-- HG em `25568`.
-- Java 25; Xmx documentado: hub 1536M, BedWars 2048M, Campo Minado 2048M, HG 3072M, Velocity 2G.
+- **`ubuntu2` (10.8.0.1)**:
+  - Velocity 4.1.1 na porta `25565`.
+  - Executa `bigbanghub-velocity.jar`.
+  - Gerencia o cluster de instâncias e as filas globais.
+- **`brainiac` (10.8.0.2)** via WireGuard:
+  - Hub Paper 26.2 na porta `25565` (`role: HUB`).
+  - BedWars na porta `25566` (`role: MINIGAME`).
+  - Campo Minado na porta `25567` (`role: MINIGAME`, BigBangMinefield).
+  - HG na porta `25568` (`role: MINIGAME`).
+  - Java 25.
+- **Zero Middleware Externo**: Não há dependência de Redis, MySQL, Kafka ou RabbitMQ. O cluster se comunica inteiramente através do canal de plugin messaging `bigbanghub:main`.
 
-O projeto não introduz Redis, SQL, broker, autoscaling ou outro coordenador.
-As filas vivem no único proxy documentado; o ciclo de vida é conexão,
-transferência ou disconnect.
+---
 
-## Fluxo de fila
+## 3. Fluxo de Vida de uma Partida
 
-1. O Paper compila a configuração ao carregar e guarda templates de menu,
-   componentes MiniMessage e ações já validadas.
-2. Compass, alias e `/queue join` chamam o mesmo `QueueService` Paper.
-3. O Paper envia um envelope `QUEUE_JOIN`; o proxy aceita somente mensagens
-   vindas do backend configurado como `hubminigame`.
-4. O proxy valida jogador, jogo e capacidade, registra a entrada de forma
-   atômica e escolhe uma instância `WAITING` elegível.
-5. Reserva uma vaga, remove o jogador da fila e inicia `createConnectionRequest`.
-   Em falha, libera a reserva e recoloca o jogador na fila.
-6. Disconnect remove a associação no proxy.
+```
+1. Minigame Boot
+   └─ PaperInstanceAgent gera novo UUID sessionId e agenda heartbeat (3s).
+2. Registration
+   └─ Paper envia INSTANCE_REGISTER com sessionId, capacidade e estado WAITING.
+   └─ Velocity valida identidade, registra como HEALTHY e responde INSTANCE_REGISTER_ACK.
+   └─ Velocity dispara dispatchQueue(gameId).
+3. Player Queue Join
+   └─ Jogador entra na fila no Hub (/queue join ou bússola).
+   └─ Velocity executa dispatchQueue(gameId).
+4. Slot Reservation & Transfer
+   └─ Velocity seleciona a melhor instância (ex: FILL_WAITING).
+   └─ Tenta reservar slot via InMemoryReservationService.reserve(...).
+   └─ Se aprovado, retira jogador da fila e inicia transferência.
+5. Arrival Confirmation
+   └─ Jogador conecta no destino -> ServerPostConnectEvent no Velocity confirma reserva (CONFIRMED).
+6. Failure & Fallback
+   └─ Se a conexão falhar ou timeout expirar -> reserva CANCELLED/EXPIRED, vaga liberada, jogador re-enfileirado.
+   └─ Se o jogador for kickado durante uma partida -> KickedFromServerEvent redireciona de volta ao Hub.
+```
 
-NPCs FancyNpcs podem chamar o alias (`campominado`) ou outra operação equivalente
-configurada. A configuração existente da rede usa `send_to_server`, que é uma
-transferência direta; para convergir com a fila, troque a ação do NPC em uma
-janela controlada para uma ação de comando/alias. BigBangHub não reinventa NPCs.
+---
 
-## Roteamento e estados
+## 4. Despacho Orientado a Eventos vs. Polling
 
-`FILL_WAITING` considera apenas servidores do jogo correto, habilitados,
-`WAITING` e com capacidade. A instância com mais jogadores é escolhida para
-preencher partidas; empate usa o ID lexicograficamente menor. Reservas atômicas
-evitam overbooking entre chamadas concorrentes. Os estados suportados são
-`OFFLINE`, `STARTING`, `WAITING`, `STARTING_GAME`, `IN_GAME`, `ENDING`, `FULL` e
-`MAINTENANCE`.
+O sistema elimina expressamente polling a cada tick nas filas:
+- A fila dorme enquanto não há vagas ou enquanto não há jogadores.
+- Despachos ocorrem somente sob eventos de gatilho:
+  - `InstanceRegisteredEvent`
+  - `InstanceHealthChangedEvent` (recuperação para `HEALTHY`)
+  - `InstanceStateChangedEvent` (mudança para `WAITING`)
+  - `QueueJoinedEvent`
+  - `ReservationExpiredEvent` / `ReservationCancelledEvent`
+  - Falha de transferência com retorno à fila
 
-O registro aceita atualizações `SERVER_STATUS` de um backend cujo nome coincide
-com o ID do servidor. Os minigames atuais ainda não enviam esse heartbeat, então
-os valores iniciais de `servers.yml` são a capacidade operacional conhecida.
+---
 
-## Reload e threads
+## 5. Garantias de Concorrência e Invariantes
 
-Reload faz `load -> validate -> construct -> atomic swap`. Falha mantém o
-snapshot antigo e nunca limpa `InMemoryQueueService`. Canal, versão, limite de
-payload e autenticação exigem restart para não deixar Paper e Velocity em
-protocolos diferentes.
-
-Operações de fila são curtas e sem I/O. A implementação usa uma única trava
-curta para manter a associação global jogador/fila atômica; não há lock durante
-transferência ou rede. Callbacks de API executam no thread do chamador da
-implementação. Paper agenda mensagens ao jogador no thread principal; Velocity
-não bloqueia seu event loop com disco ou rede síncrona.
+- **Exclusividade de Reserva**: Um jogador pode possuir no máximo 1 reserva ativa em todo o proxy.
+- **Capacidade Efetiva**: Uma instância nunca ultrapassa seu `maxPlayers`:
+  $$playerCount + activeReservations \le maxPlayers$$
+- **Consistência de Reinicialização**: Mensagens de rádio antigas de um processo anterior que reiniciou são imediatamente rejeitadas pelo Velocity através de validação de `sessionId`.
+- **Thread Safety**: Operações em memória usam mapas concorrentes e travas ultra-curtas de sincronização granular de instâncias/filas sem qualquer I/O bloqueante dentro do lock.

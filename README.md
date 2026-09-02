@@ -1,72 +1,83 @@
-# BigBangHub
+# BigBangHub 0.2.0
 
-Foundation leve do Hub/Lobby da BigBangCraft para Paper 26.2 e Velocity 4.1.1.
-O plugin fornece seleção de minigames, ações configuráveis, filas em memória,
-roteamento, transferência segura e proteção do lobby. Ele não implementa regras
-de nenhum minigame.
+Infrastructure e Foundation de Hub/Lobby, Filas Globais e Registro de Instâncias Minigames para a rede **BigBangCraft** (Paper 26.2 e Velocity 4.1.1, Java 25).
+
+A versão `0.2.0` evolui o sistema para uma infraestrutura completa de **Runtime Instance Registry**, **Liveness Tracking com Heartbeats**, **Slot Reservations transitórias** e **Roteamento Resiliente Orientado a Eventos**, suportando múltiplas instâncias dinâmicas de minigames (`bedwars`, `campominado`, `hg`) sem dependência de middlewares externos (sem Redis, sem SQL, sem brokers).
+
+---
 
 ## Módulos
 
-- `bigbanghub-api`: contratos públicos para integrações.
-- `bigbanghub-common`: modelos imutáveis, validação, protocolo e fila/roteamento.
-- `bigbanghub-paper`: bússola, menu, aliases, ações, proteção e ponte com o proxy.
-- `bigbanghub-velocity`: registro de servidores, filas autoritativas e transferências.
+- `bigbanghub-api`: Contratos públicos, enums de lifecycle (`ServerRole`, `InstanceHealth`, `ReservationState`, `GameState`), records de snapshot/reserva e interfaces (`InstanceRegistry`, `InstanceService`, `QueueService`, `RoutingService`).
+- `bigbanghub-common`: Implementações centrais puras em memória: `InMemoryInstanceRegistry`, `InMemoryReservationService`, `InMemoryQueueService`, `InstanceAwareRoutingService`, codec binário `BBH1` com HMAC opcional e parser de configurações transacionais.
+- `bigbanghub-paper`: Plugin unificado para servidores Paper 26.2. Atua tanto como núcleo do Lobby principal (`role: HUB`, com bússola, menus e proteção) quanto como agente leve nos servidores de minigame (`role: MINIGAME`, com `PaperInstanceAgent`, publicação de estado e heartbeats).
+- `bigbanghub-velocity`: Plugin para proxy Velocity 4.1.1. Orquestrador do cluster de instâncias, filas FIFO orientadas a eventos, alocação de vagas por reserva, confirmação de conexão e fallback automático para o Hub.
 
-## Requisitos e build
+---
 
-- Java 25 (igual ao Paper 26.2 da rede).
-- Gradle Wrapper 8.14.3.
-- API compilada contra `io.papermc.paper:paper-api:26.2.build.121-stable`, último build 26.2 disponível no repositório oficial no momento do build.
+## Requisitos e Build
+
+- **Java 25** (OpenJDK / GraalVM).
+- **Gradle 8.14.3** (wrapper incluso).
+- Compilado contra `io.papermc.paper:paper-api:26.2.build.121-stable` e `com.velocitypowered:velocity-api:4.1.1`.
 
 ```bash
 ./gradlew clean build --no-daemon
 ```
 
-Artefatos:
+Artefatos gerados:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.1.0.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.1.0.jar
-bigbanghub-api/build/libs/bigbanghub-api-0.1.0.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.2.0.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.2.0.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.2.0.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.2.0.jar
 ```
 
-## Instalação rápida
+---
 
-1. Instale o JAR Paper em `/home/brainiac/bigbangcraft/hubminigame/plugins/`.
-2. Instale o JAR Velocity em `/home/ubuntu/proxy/plugins/`.
-3. Mantenha `games.yml`, `servers.yml`, `config.yml` e o segredo opcional alinhados nos dois plugins.
-4. Faça um restart controlado; use `/bbhub reload` apenas para mudanças reloadable.
+## Papéis de Servidor (`ServerRole`)
 
-O servidor documentado usa Paper `26.2-120`, Java 25, hub `hubminigame` e os
-destinos `bedwars`, `campominado` e `hg`. O build 121 é um patch da mesma linha;
-valide-o primeiro em staging antes de atualizar o Paper de produção.
+No Paper, defina a responsabilidade do servidor no `config.yml`:
 
-O BigBangHub substitui o núcleo customizado de lobby que hoje é o
-`HubMinigame.jar`; não instale ambos como donos de bússola/proteção. FancyNpcs,
-FancyHolograms, WorldGuard, LuckPerms, BungeeGuard e EasyCommandBlocker podem
-continuar. Para filas, configure os NPCs para executar o alias do jogo; a
-ação atual FancyNpcs `send_to_server` é transferência direta e não entra na fila.
+- **`HUB`**: Ativa bússola, menu de minigames, atalhos de fila (`/queue`, `/campominado`) e proteções do lobby.
+- **`MINIGAME`**: Desativa menus e proteções de lobby; ativa o `PaperInstanceAgent`, registrando a instância no Velocity e enviando heartbeats periódicos a cada 3 segundos com contagem de jogadores e estado de partida.
+- **`GENERIC`**: Conexão básica de rede sem lobby protection.
 
-## Uso
+---
 
+## Comandos
+
+### No Proxy Velocity:
 ```text
-/bbhub compass
-/bbhub status
-/bbhub reload
-/queue join campominado
-/queue leave
-/queue status
-/campominado
+/bbhub status              # Visão geral do cluster e das filas
+/bbhub instances           # Lista todas as instâncias dinâmicas e saúde
+/bbhub instance <id>       # Detalhes completos de uma instância
+/bbhub queues              # Status de todas as filas, espera e instâncias elegíveis
+/bbhub queue <game>        # Detalhes dos jogadores na fila
+/bbhub metrics             # Telemetria acumulada de requisições, transferências e heartbeats
+/bbhub reload              # Recarrega configurações de forma segura
+/queue join <game>         # Entrar na fila de um minigame
+/queue leave               # Sair da fila
+/queue status              # Consultar sua posição atual
 ```
 
-O alias `/campominado` vem de `config.yml` e pode ser trocado sem recompilar.
-Veja o exemplo completo em [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+### No Servidor Paper:
+```text
+/bbhub status              # Exibe papel do servidor, status da ponte e detalhes da instância
+/bbhub compass             # Abre o menu da bússola de minigames (apenas em role HUB)
+/bbhub reload              # Recarrega menus e proteções locais
+/campominado               # Atalho direto para entrar na fila (configurável em aliases)
+```
 
-## Documentação
+---
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/API.md`](docs/API.md)
-- [`docs/PROTOCOL.md`](docs/PROTOCOL.md)
-- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
-- [`docs/SECURITY.md`](docs/SECURITY.md)
+## Documentação Técnica
+
+- [`docs/INSTANCE_LIFECYCLE.md`](docs/INSTANCE_LIFECYCLE.md): Ciclo de vida completo das instâncias, liveness, sessões, reservas e guia para desenvolvedores de minigames.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Arquitetura do cluster, topologia real e garantias de concorrência.
+- [`docs/API.md`](docs/API.md): Contratos públicos e integração Java.
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md): Especificação dos envelopes binários `BBH1` e catálogo de mensagens.
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): Guia de configuração de todos os arquivos YAML.
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md): Guia operacional, implantação e diagnóstico.
+- [`docs/SECURITY.md`](docs/SECURITY.md): Isolamento de backends, allowlists, rate limiting e autenticação HMAC.

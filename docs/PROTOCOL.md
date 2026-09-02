@@ -1,56 +1,69 @@
-# Protocolo Paper ↔ Velocity
+# Protocolo Paper ↔ Velocity (BigBangHub 0.2.0)
 
-- Canal Minecraft: `bigbanghub:main`.
-- Versão: `1`.
-- Transporte: plugin messaging; Bungee plugin-message channel já está habilitado
-  na configuração Velocity real.
-- Limite padrão do payload: 16 KiB; o parser YAML limita a configuração a esse
-  teto e o SnakeYAML a 256 KiB.
+- **Canal Minecraft**: `bigbanghub:main`.
+- **Versão**: `1`.
+- **Transporte**: Plugin messaging nativo via Bungee plugin message channel.
+- **Limite padrão de payload**: 16 KiB (enforced rigidamente pelo codec).
 
-## Envelope binário
+---
 
-Todos os inteiros usam big-endian, conforme `Data{Input,Output}Stream`:
+## 1. Envelope Binário
+
+Todos os números inteiros usam big-endian (`DataInputStream` / `DataOutputStream`):
 
 ```text
-magic             int       0x42424831 (BBH1)
+magic             int       0x42424831 (ASCII "BBH1")
 protocolVersion   u8        1
-messageType       u8        código conhecido
-correlationId     16 bytes  UUID (dois longs)
+messageType       u8        código da mensagem (1..12)
+correlationId     16 bytes  UUID (dois longs em sequência)
 payloadLength     int       0..16384
-payload           bytes
+payload           bytes     dados da mensagem
 signatureLength   u16       0 ou 32
-signature         bytes     HMAC-SHA256 do envelope até payload
+signature         bytes     HMAC-SHA256 do cabeçalho até o fim do payload
 ```
 
-HMAC é ativado quando `BIGBANGHUB_MESSAGE_SECRET` contém valor; com
-`require-hmac: true`, a variável é obrigatória. O segredo não fica no Git, não é
-logado e deve ser igual nos dois processos. Se não for usado, BungeeGuard,
-firewall e validação da origem do backend continuam sendo a fronteira confiável.
+A assinatura HMAC-SHA256 é calculada caso `BIGBANGHUB_MESSAGE_SECRET` esteja configurado no ambiente. Com `require-hmac: true`, mensagens sem assinatura ou com assinatura divergente são descartadas imediatamente com `ProtocolValidationException`.
 
-## Mensagens
+---
 
-| Código | Tipo | Payload |
-|---:|---|---|
-| 1 | `QUEUE_JOIN` | UUID do jogador + game ID |
-| 2 | `QUEUE_LEAVE` | UUID do jogador |
-| 3 | `QUEUE_STATUS` | UUID do jogador |
-| 4 | `SERVER_CONNECT` | UUID do jogador + server ID |
-| 5 | `QUEUE_RESPONSE` | UUID, código, jogo opcional, posição, tamanho, mensagem |
-| 6 | `SERVER_RESPONSE` | UUID, sucesso, mensagem |
-| 7 | `SERVER_STATUS` | server ID, estado, jogadores, capacidade |
+## 2. Catálogo de Mensagens
 
-Strings têm comprimento u16 e máximo de 256 bytes. IDs passam por `GameId` ou
-`ServerId`; estado, código e tipo desconhecidos são rejeitados.
+| Código | Identificador | Origem → Destino | Payload |
+|---:|---|:---:|---|
+| 1 | `QUEUE_JOIN` | Paper → Velocity | UUID jogador, String gameId |
+| 2 | `QUEUE_LEAVE` | Paper → Velocity | UUID jogador |
+| 3 | `QUEUE_STATUS` | Paper → Velocity | UUID jogador |
+| 4 | `SERVER_CONNECT` | Paper → Velocity | UUID jogador, String serverId |
+| 5 | `QUEUE_RESPONSE` | Velocity → Paper | UUID jogador, u8 código, Bool temJogo, String jogo, Int posição, Int tamanho, String mensagem |
+| 6 | `SERVER_RESPONSE` | Velocity → Paper | UUID jogador, Bool sucesso, String mensagem |
+| 7 | `SERVER_STATUS` | Paper → Velocity | String serverId, u8 estado, Int jogadores, Int maxJogadores |
+| 8 | `INSTANCE_REGISTER` | Minigame → Velocity | String instanceId, String gameId, String serverName, UUID sessionId, u8 estado, Int jogadores, Int min, Int max, Bool aceitaJogadores |
+| 9 | `INSTANCE_HEARTBEAT` | Minigame → Velocity | String instanceId, UUID sessionId, u8 estado, Int jogadores, Int max, Bool aceitaJogadores |
+| 10 | `INSTANCE_UNREGISTER` | Minigame → Velocity | String instanceId, UUID sessionId, String motivo |
+| 11 | `INSTANCE_STATE_CHANGE` | Minigame → Velocity | String instanceId, UUID sessionId, u8 estado, Bool aceitaJogadores, Int jogadores, Int max |
+| 12 | `INSTANCE_REGISTER_ACK` | Velocity → Minigame | String instanceId, UUID sessionId, Bool sucesso, String mensagem |
 
-## Validação
+---
 
-Velocity marca o evento como handled, aceita requisições de fila/conexão somente
-do `hubminigame`, confirma que o UUID do payload é o jogador da conexão, limita
-uma requisição por jogador a cada 100 ms e rejeita duplicação de transferência.
-`SERVER_STATUS` só é aceito quando o backend de origem tem o mesmo nome do
-servidor reportado. Payload truncado, oversized, magic/versão/tipo desconhecido,
-assinatura inválida ou dados à direita não chegam ao domínio.
+## 3. Estados no Wire (`GameStateWire`)
 
-Mensagens recebidas do proxy no Paper também passam pelo codec e só completam
-uma requisição pendente com o `correlationId` correspondente. A resposta expira
-em 100 ticks; não há retry automático que possa duplicar transferências.
+O byte de estado segue o enum ordinal:
+- `0`: `OFFLINE`
+- `1`: `STARTING`
+- `2`: `WAITING` (Elegível para matchmaking e reservas)
+- `3`: `STARTING_GAME`
+- `4`: `IN_GAME`
+- `5`: `ENDING`
+- `6`: `FULL`
+- `7`: `MAINTENANCE`
+
+---
+
+## 4. Validações e Sanity Checks
+
+1. **Capacidade**: `playerCount >= 0`, `minPlayers >= 0`, `maxPlayers >= 1`, `maxPlayers <= 1000`, `minPlayers <= maxPlayers`. Qualquer pacote fora desses limites resulta em falha de decodificação.
+2. **Strings**: Strings possuem prefixo UTF de comprimento u16; o comprimento máximo para IDs e nomes de servidor é de 64 bytes; motivos e mensagens de resposta até 256 bytes.
+3. **Session ID**: Cada payload de ciclo de vida de instância (8 a 12) contém o `UUID sessionId` do runtime atual. O Velocity valida se o `sessionId` corresponde à sessão registrada ativa no nó, descartando silenciosamente qualquer mensagem remanescente de execuções passadas.
+4. **Rate Limiting**:
+   - Por jogador: máximo de 1 requisição a cada 100 ms.
+   - Por backend: máximo de 50 mensagens por segundo por servidor backend.

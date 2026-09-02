@@ -1,3 +1,4 @@
+# BigBangHub Velocity proxy configuration
 proxy:
   channel: bigbanghub:main
   protocol-version: 1
@@ -5,6 +6,19 @@ proxy:
   shared-secret-environment: BIGBANGHUB_MESSAGE_SECRET
   require-hmac: false
   max-payload-bytes: 16384
+
+registry:
+  heartbeat-timeout: 10s
+  suspect-threshold: 5s
+  fallback-to-hub: true
+  allowed:
+    "campominado-*":
+      game-id: campominado
+    "bedwars-*":
+      game-id: bedwars
+
+routing:
+  reservation-ttl: 10s
 
 aliases: {}
 allow-console-commands: false

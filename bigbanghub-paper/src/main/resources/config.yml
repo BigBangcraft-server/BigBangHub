@@ -1,4 +1,19 @@
-# BigBangHub Paper configuration. Changes to menus, games and protection reload safely.
+# BigBangHub Paper configuration.
+# Server Roles: HUB, MINIGAME, GENERIC
+server:
+  role: HUB
+  # Se o servidor for um minigame, defina role: MINIGAME e preencha as configurações abaixo:
+  # instance:
+  #   instance-id: campominado-01
+  #   game-id: campominado
+  #   server-name: campominado-01
+  #   heartbeat:
+  #     interval: 3s
+  #   capacity:
+  #     min-players: 2
+  #     max-players: 10
+  #   accepting-players: true
+
 proxy:
   channel: bigbanghub:main
   protocol-version: 1

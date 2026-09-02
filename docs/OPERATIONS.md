@@ -1,80 +1,118 @@
-# Operações
+# Operações (BigBangHub 0.2.0)
 
-## Build e artefatos
+## 1. Build e Artefatos
 
-Na checkout:
+No diretório raiz:
 
 ```bash
 ./gradlew clean build --no-daemon
 git diff --check
 ```
 
-Os artefatos são:
+Os artefatos gerados são:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.1.0.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.1.0.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.2.0.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.2.0.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.2.0.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.2.0.jar
 ```
 
-## Instalação controlada
+---
 
-Paper:
+## 2. Implantação nos Servidores
 
+### No Proxy Velocity (`ubuntu2` - 10.8.0.1):
 ```text
-/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.1.0.jar
+/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.2.0.jar
 ```
 
-Velocity:
-
+### No Servidor Hub (`brainiac` - 10.8.0.2):
 ```text
-/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.1.0.jar
+/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.2.0.jar
+```
+No `config.yml`: `server.role: HUB`
+
+### Nos Servidores de Minigame (`brainiac` - 10.8.0.2):
+- BedWars: `/home/brainiac/bigbangcraft/bedward/plugins/bigbanghub-paper-0.2.0.jar`
+- Campo Minado: `/home/brainiac/bigbangcraft/campominado/plugins/bigbanghub-paper-0.2.0.jar`
+- HG: `/home/brainiac/bigbangcraft/hg/plugins/bigbanghub-paper-0.2.0.jar`
+
+No `config.yml` de cada minigame:
+```yaml
+server:
+  role: MINIGAME
+  instance:
+    instance-id: campominado-01 # (ou bedwars-01, hg-01)
+    game-id: campominado        # (ou bedwars, hg)
+    server-name: campominado-01
 ```
 
-O hub atual possui `HubMinigame.jar`, que também entrega bússola/proteção. Faça
-backup e remova/desabilite o núcleo antigo na mesma janela de manutenção; não
-rode os dois como donos dos mesmos eventos. Preserve FancyNpcs, FancyHolograms,
-WorldGuard, LuckPerms, Vault, BungeeGuard, nLogin, VoidGen, FAWE, spark e
-EasyCommandBlocker conforme a stack documentada.
+*Atenção: NÃO reinicie nem modifique servidores de produção sem janela controlada de manutenção.*
 
-Ordem segura: validar JARs em staging, copiar configuração, parar o proxy e o
-hub de forma graciosa pelos scripts existentes, instalar os JARs, conferir que
-`servers.yml` bate com `velocity.toml`, iniciar o proxy, iniciar o hub e então
-verificar logs. Este projeto não executa deploy, restart ou alteração de mundo.
+---
 
-## Configuração inicial
+## 3. Comandos Administrativos e Inspeção em Produção
 
-O Velocity real já tem `hubminigame`, `bedwars`, `campominado` e `hg` registrados.
-O plugin reutiliza os registros quando endereço coincide e só registra destinos
-novos declarados. O backend Paper precisa manter `bigbanghub:main` e o mesmo
-`hub-server-name`.
+O Velocity conta com ferramentas completas de telemetria operacional via comando `/bbhub`:
 
-Para HMAC, injete `BIGBANGHUB_MESSAGE_SECRET` nos dois processos antes do start;
-para o primeiro rollout pode deixá-lo ausente com `require-hmac: false`, usando
-BungeeGuard, firewall e origem de conexão. Nunca coloque o segredo em YAML
-versionado ou log.
+### Visão Geral do Cluster:
+```text
+/bbhub status
+```
+Exibe versão, protocolo, jogadores online no proxy, total de instâncias registradas, total de reservas ativas e resumo de cada jogo configurado.
 
-## Comandos e logs
+### Listagem de Instâncias Runtime:
+```text
+/bbhub instances
+```
+Lista todas as instâncias dinâmicas conectadas:
+```text
+- campominado-01 [campominado] (campominado-01) HEALTHY WAITING 3/10 (res: 1) hb: 1.2s atrás s:4a8b1c9f
+- bedwars-01 [bedwars] (bedwars-01) HEALTHY IN_GAME 8/16 (res: 0) hb: 0.8s atrás s:e2d4a1b0
+```
 
-Paper: `/bbhub version`, `/bbhub status`, `/bbhub reload`, `/bbhub compass`.
-Velocity: `/bbhub version`, `/bbhub status`, `/bbhub reload` e `/queue`.
-Operadores precisam das permissões administrativas; comandos de jogador exigem
-as permissões `bigbanghub.queue.*` correspondentes.
+### Detalhe de uma Instância:
+```text
+/bbhub instance <id>
+```
+Exibe estado completo, capacidade mínima/máxima, reservas ativas, instante exato do último heartbeat e UUID da sessão.
 
-Logs úteis são `logs/latest.log` do hub e do proxy. Procure enable, quantidade de
-jogos, rejeições de protocolo, servidor não permitido, reserva/transferência e
-falhas de conexão. Não existe log de cada movimento/click nem de segredo.
+### Inspeção de Filas:
+```text
+/bbhub queues
+```
+Mostra o status de cada fila de jogo:
+- Quantidade de jogadores na fila;
+- Tempo de espera do jogador mais antigo (`Oldest wait`);
+- Número de instâncias elegíveis para receber conexões;
+- Estratégia de roteamento ativa.
 
-## Rollback e diagnóstico
+### Detalhe de Fila por Jogo:
+```text
+/bbhub queue <game>
+```
+Lista os primeiros jogadores na fila em ordem estrita de prioridade FIFO.
 
-Rollback: pare graciosamente, restaure o JAR anterior e as configurações do
-backup, inicie pelos scripts existentes e confirme que a fila anterior não foi
-tratada como persistente. O estado de fila é deliberadamente em memória e se
-perde em restart.
+### Métricas Internas:
+```text
+/bbhub metrics
+```
+Exibe contadores acumulados de telemetria:
+- `Registrations`: Total de registros de instâncias processados.
+- `Heartbeats`: Contagem de heartbeats recebidos vs rejeitados.
+- `Routing`: Tentativas de roteamento vs falhas.
+- `Transfers`: Transferências iniciadas, bem-sucedidas e falhas.
+- `Reservation Expirations`: Quantidade de vagas liberadas por timeout.
 
-- `connection refused`: confira `10.8.0.2`, porta, tmux e firewall WireGuard.
-- destino não permitido: confira ID em `servers.yml` e `velocity.toml`.
-- timeout de plugin message: confira canal, Bungee plugin-message channel,
-  BungeeGuard e se o jogador está no `hubminigame`.
-- fila sem transferência: confira `state: WAITING`, `player-count/max-players`
-  e se o minigame aceita conexões.
-- reload rejeitado: corrija o caminho indicado; o snapshot anterior permanece ativo.
+---
+
+## 4. Diagnóstico Rápido
+
+| Sintoma | Causa Mais Provável | Ação Recomendada |
+|---|---|---|
+| Instância em `SUSPECT` | Perda temporária de pacote ou tick lag | Verificar se o minigame está travado ou executando garbage collection longo. |
+| Instância em `UNAVAILABLE` | Minigame fechou ou caiu conexão de rádio | Verificar status do processo no host e logs do Paper. |
+| Heartbeats sendo rejeitados (`rejected`) | Mensagens com `sessionId` desatualizado | Ocorre normalmente por alguns segundos após um restart; normaliza automaticamente. |
+| Fila parada mesmo com jogadores | Nenhuma instância `HEALTHY` em `WAITING` | Verificar com `/bbhub instances` se os servidores estão em `IN_GAME` ou cheios. |
+| Jogador redirecionado ao Hub | Servidor de minigame kickou ou caiu | Comportamento esperado de fallback; verificar motivo nos logs do backend. |

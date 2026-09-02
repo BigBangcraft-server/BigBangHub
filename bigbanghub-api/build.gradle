@@ -1,1 +1,9 @@
-// Public contracts only. Platform implementations depend on this module.
+plugins {
+    id 'maven-publish'
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) { from components.java }
+    }
+}

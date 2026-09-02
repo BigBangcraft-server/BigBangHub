@@ -1,22 +1,25 @@
-# BigBangHub 0.3.0
+# BigBangHub 0.4.0
 
-Infrastructure e Foundation de Hub/Lobby, Filas Globais, Registro de Instâncias e **Ciclo de Vida Padronizado de Partidas** para a rede **BigBangCraft** (Paper 26.2 e Velocity 4.1.1, Java 25).
+Infrastructure e Foundation de Hub/Lobby, Filas Globais, Registro de Instâncias, **Ciclo de Vida Padronizado de Partidas**, **Party System**, **Group Matchmaking**, **Reconnect & Session Recovery** e **Rematch & Play Again** para a rede **BigBangCraft** (Paper 26.2 e Velocity 4.1.1, Java 25).
 
-A versão `0.3.0` introduz o contrato padronizado de ciclo de vida de partidas da BigBangCraft:
-- **Match Lifecycle**: Criação de sessão, abertura para jogadores, contagem regressiva, trava da partida, início in-game, eliminação, transição para espectador, encerramento com resultado, retorno seguro ao Hub e handshake de limpeza (`markReady`).
-- **Admission Tickets**: Ingressos criptográficos transitórios de uso único com TTL curto, impedindo entradas diretas sem permissão ou ataques de repetição. Jogadores sem ticket são conduzidos com segurança ao Hub sem bans ou kicks.
-- **Invariante de Sessão**: Um jogador só pode pertencer a no máximo uma partida ativa em toda a rede.
-- **Orquestração Velocity**: Matchmaking match-aware priorizando preencher partidas abertas (`FILL_EXISTING_MATCH`), comandos administrativos de inspeção e aborto forçado, e telemetria operacional estendida.
+A versão `0.4.0` introduz o subsistema social e de experiência do jogador completo da BigBangCraft:
+- **Party System**: Gestão de grupos 100% in-memory com controle de liderança, convites com cooldown e expiração, transferência, expulsão, warp de membros para o mesmo servidor e sucessão automática de líder em caso de desconexão.
+- **Group Queue & Matchmaking Atômico**: Parties ingressam em filas de minigames como uma unidade indivisível, alocadas atomicamente em instâncias com capacidade suficiente sem fragmentar o grupo.
+- **Party Admission & Match Cohesion**: Ingressos criptográficos `AdmissionTicket` enriquecidos com metadados da party, validação sincronizada no Paper backend e rollback coordenado com retorno ao Hub se algum membro falhar.
+- **Reconnect & Session Recovery**: Janela de reconexão configurável para recuperação transparente de sessão após desconexões transitórias, preservando papéis e integridade da partida.
+- **Rematch & Play Again**: Sistema pós-partida de votação imediata para revanche com consenso de 100% e re-queue coordenado de toda a party.
+- **Player Experience no Hub**: Actionbar HUD periódica (papel, membros e status), efeitos audiovisuais (títulos, subtítulos e sons via Kyori Adventure) e bloqueio de menus de fila para membros não-líderes.
+- **Security Hardening**: Sanitização rigorosa de nomes de jogadores (`^[a-zA-Z0-9_]{3,16}$`), rate-limiting contra spam de convites, anti-spoofing em pacotes de rede e recuperação graciosa desbloqueando parties caso instâncias caiam.
 - **Zero Middleware Externo**: Não há dependência de Redis, MySQL, RabbitMQ ou Kafka. Todo o cluster opera através do canal de plugin messaging nativo `bigbanghub:main`.
 
 ---
 
 ## Módulos
 
-- `bigbanghub-api`: Contratos públicos, enums de lifecycle (`MatchState`, `ParticipantRole`, `ParticipantState`, `ReturnReason`, `ServerRole`, `InstanceHealth`), records de snapshot/resultado e interfaces (`MatchManager`, `MatchHandle`, `InstanceRegistry`, `InstanceService`, `QueueService`, `RoutingService`).
-- `bigbanghub-common`: Implementações centrais em memória: `InMemoryMatchRegistry`, `MatchStateMachine`, `AdmissionTicketService`, `MatchEventBus`, `InMemoryInstanceRegistry`, `InMemoryReservationService`, `InMemoryQueueService`, codec binário `BBH1` (mensagens 1 a 23) com HMAC opcional.
-- `bigbanghub-paper`: Plugin unificado para servidores Paper 26.2. Atua como núcleo do Lobby (`role: HUB`) ou como controlador de partidas e agente (`role: MINIGAME`, com `PaperMatchManager`, validação de tickets na entrada, proteção contra conexão direta e retorno seguro ao Hub).
-- `bigbanghub-velocity`: Plugin para proxy Velocity 4.1.1. Orquestrador do cluster de instâncias, partidas globais, emissor e validador de tickets de admissão, filas orientadas a eventos e comandos administrativos.
+- `bigbanghub-api`: Contratos públicos, enums de lifecycle (`MatchState`, `PartyState`, `ParticipantRole`, `ParticipantState`, `ReturnReason`), records (`PartySnapshot`, `PartyInvite`, `MatchSnapshot`) e interfaces (`PartyService`, `MatchManager`, `QueueService`, `RoutingService`).
+- `bigbanghub-common`: Implementações centrais em memória: `InMemoryPartyService`, `InMemoryMatchRegistry`, `AdmissionTicketService`, `RematchService`, `InMemoryQueueService`, `InMemoryInstanceRegistry`, codec binário `BBH1` (mensagens 1 a 31) com HMAC opcional.
+- `bigbanghub-paper`: Plugin unificado para servidores Paper 26.2. Atua como núcleo do Lobby (`role: HUB`, com comando `/party`, executor de menus com checagem de líder e bússola) ou como controlador de partidas (`role: MINIGAME`, com `PaperMatchManager`, validação de tickets na entrada, reconexão e retorno seguro ao Hub com fallback kick).
+- `bigbanghub-velocity`: Plugin para proxy Velocity 4.1.1. Orquestrador do cluster de instâncias, partidas globais, autoridade central de parties, despachador de matchmaking em grupo, emissor de tickets, HUD periódica e comandos `/party`, `/reconnect`, `/rematch`, `/playagain`.
 
 ---
 
@@ -33,52 +36,64 @@ A versão `0.3.0` introduz o contrato padronizado de ciclo de vida de partidas d
 Artefatos gerados:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.3.0.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.3.0.jar
-bigbanghub-api/build/libs/bigbanghub-api-0.3.0.jar
-bigbanghub-common/build/libs/bigbanghub-common-0.3.0.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.4.0.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.0.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.4.0.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.4.0.jar
 ```
 
 ---
 
 ## Comandos
 
-### No Proxy Velocity:
+### Comandos de Party (Proxy & Paper):
 ```text
-/bbhub status              # Visão geral do cluster, instâncias, partidas e filas
+/party [status]            # Exibe os membros, líder e estado atual da sua party
+/party invite <jogador>    # Envia convite de party para um jogador
+/party accept [jogador]    # Aceita convite pendente
+/party decline [jogador]   # Recusa convite pendente
+/party leave               # Sai da party atual
+/party kick <jogador>      # Expulsa um membro da party (apenas líder)
+/party leader <jogador>    # Transfere a liderança da party (apenas líder)
+/party disband             # Dissolve a party (apenas líder)
+/party warp                # Puxa todos os membros para o servidor atual do líder
+```
+
+### Comandos de Partida & Sessão:
+```text
+/reconnect                 # Tenta reconectar à última partida ativa
+/playagain                 # Vota para jogar novamente após fim de partida
+/rematch                   # Vota para revanche imediata com os mesmos jogadores
+```
+
+### Comandos de Fila & Administração (Velocity):
+```text
+/queue join <game>         # Entrar na fila de um minigame (líder entra com a party)
+/queue leave               # Sair da fila
+/queue status              # Consultar sua posição atual
+/bbhub status              # Visão geral do cluster, instâncias, partidas, parties e filas
 /bbhub instances           # Lista instâncias dinâmicas, saúde e partida ativa vinculada
 /bbhub instance <id>       # Detalhes completos de uma instância
 /bbhub matches             # Lista todas as partidas ativas na rede e contadores
 /bbhub match <id>          # Detalhes da partida, participantes e papéis
 /bbhub match <id> abort    # Força aborto de partida travada com retorno ao Hub
 /bbhub return <player>     # Retorna forçadamente um jogador ao Hub com auditoria
-/bbhub queues              # Status de todas as filas, espera e instâncias elegíveis
-/bbhub queue <game>        # Detalhes dos jogadores na fila
-/bbhub metrics             # Telemetria acumulada de requisições, transferências e partidas
 /bbhub reload              # Recarrega configurações de forma segura
-/queue join <game>         # Entrar na fila de um minigame
-/queue leave               # Sair da fila
-/queue status              # Consultar sua posição atual
-```
-
-### No Servidor Paper:
-```text
-/bbhub status              # Exibe papel do servidor, status da ponte e detalhes da instância
-/bbhub compass             # Abre o menu da bússola de minigames (apenas em role HUB)
-/bbhub reload              # Recarrega menus e proteções locais
-/campominado               # Atalho direto para entrar na fila (configurável em aliases)
 ```
 
 ---
 
 ## Documentação Técnica
 
-- [`docs/MATCH_LIFECYCLE.md`](docs/MATCH_LIFECYCLE.md): Especificação completa da máquina de estados de partidas, transições, tickets de admissão e tolerância a falhas.
-- [`docs/MINIGAME_INTEGRATION.md`](docs/MINIGAME_INTEGRATION.md): Guia prático passo a passo com exemplos em Java para integração de plugins de minigame.
-- [`docs/INSTANCE_LIFECYCLE.md`](docs/INSTANCE_LIFECYCLE.md): Ciclo de vida das instâncias, liveness, heartbeats, sessões, reservas e handshake de limpeza.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Arquitetura global do cluster, topologia real e garantias de concorrência.
-- [`docs/API.md`](docs/API.md): Contratos públicos, interfaces e eventos observacionais.
-- [`docs/PROTOCOL.md`](docs/PROTOCOL.md): Especificação dos envelopes binários `BBH1`, catálogo de mensagens (1 a 23) e layouts.
-- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): Guia de configuração de todos os arquivos YAML (`match`, `spectator`, etc.).
+- [`docs/PARTIES.md`](docs/PARTIES.md): Especificação completa do subsistema de parties, invariantes, comandos, HUD e protocolo.
+- [`docs/RECONNECT_REMATCH.md`](docs/RECONNECT_REMATCH.md): Guia de reconexão de sessão e votação de rematch / play again.
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): Relatório de benchmarks de carga (1.000 parties simultâneas), latência de matchmaking p99 e sweepers.
+- [`docs/SECURITY.md`](docs/SECURITY.md): Segurança de ingressos, hardening de parties, sanitização de nomes, anti-spoofing e fallback kicks.
+- [`docs/INTEGRATION_TESTING.md`](docs/INTEGRATION_TESTING.md): Arquitetura do test harness e validação do ciclo de vida ponta a ponta.
+- [`docs/VALIDATION.md`](docs/VALIDATION.md): Relatório de validação staging/live sob diretrizes de segurança (LIVE_VALIDATION = NOT_RUN_SAFETY).
+- [`docs/MATCH_LIFECYCLE.md`](docs/MATCH_LIFECYCLE.md): Máquina de estados de partidas, transições e tolerância a falhas.
+- [`docs/MINIGAME_INTEGRATION.md`](docs/MINIGAME_INTEGRATION.md): Guia prático para integração de plugins de minigame.
+- [`docs/INSTANCE_LIFECYCLE.md`](docs/INSTANCE_LIFECYCLE.md): Ciclo de vida das instâncias, liveness, heartbeats, reservas e handshake de limpeza.
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): Guia de configuração de todos os arquivos YAML (`party`, `experience`, `reconnect`, etc.).
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md): Guia operacional, implantação, permissões e diagnóstico.
-- [`docs/SECURITY.md`](docs/SECURITY.md): Segurança de ingressos, proteção contra entrada direta, isolamento e auditoria.
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md): Catálogo de mensagens binárias `BBH1` (mensagens 1 a 31) e layouts.

@@ -1,7 +1,7 @@
 {
   "id": "bigbanghub",
   "name": "BigBangHub",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "authors": ["BigBangCraft"],
   "main": "com.bigbangcraft.hub.velocity.BigBangHubVelocityPlugin"
 }

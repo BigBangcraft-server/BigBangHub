@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'com.bigbangcraft'
-version = '0.3.0'
+version = '0.4.0'
 
 ext {
     paperApiVersion = '26.2.build.121-stable'

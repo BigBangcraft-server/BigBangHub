@@ -4,3 +4,4 @@ messages:
   transfer-started: '<green>Conectando ao servidor...</green>'
   console-command-disabled: '<red>Esta ação administrativa está desabilitada.</red>'
   console-command-denied: '<red>Comando não permitido.</red>'
+  permission-denied: '<red>Você não tem permissão.</red>'

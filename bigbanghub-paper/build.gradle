@@ -5,6 +5,8 @@ plugins {
 dependencies {
     implementation project(':bigbanghub-common')
     compileOnly "io.papermc.paper:paper-api:${rootProject.paperApiVersion}"
+    testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junitVersion}"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher:${rootProject.junitPlatformVersion}"
 }
 
 tasks.jar { enabled = false }

@@ -5,6 +5,7 @@ import com.bigbangcraft.hub.api.ServerId;
 import com.bigbangcraft.hub.api.TransferResult;
 import com.bigbangcraft.hub.common.MessagePayloads;
 import com.bigbangcraft.hub.common.MessageType;
+import com.bigbangcraft.hub.common.ProtocolValidationException;
 
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
@@ -25,7 +26,7 @@ final class PaperTransferService implements PlayerTransferService {
                         return response.playerId().equals(playerId)
                                 ? new TransferResult(response.success(), response.message())
                                 : TransferResult.failure("Resposta inválida do proxy.");
-                    } catch (Exception exception) {
+                    } catch (ProtocolValidationException | IllegalArgumentException exception) {
                         return TransferResult.failure("Resposta inválida do proxy.");
                     }
                 });

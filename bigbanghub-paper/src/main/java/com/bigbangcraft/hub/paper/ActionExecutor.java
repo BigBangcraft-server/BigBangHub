@@ -27,11 +27,17 @@ final class ActionExecutor {
     void execute(Player player, ActionDefinition action) {
         HubConfigSnapshot config = plugin.configSnapshot();
         switch (action.type()) {
-            case PLAYER_COMMAND -> player.performCommand(replacePlayerPlaceholders(action.value(), player));
+            case PLAYER_COMMAND -> playerCommand(player, action.value(), config);
             case CONSOLE_COMMAND -> consoleCommand(player, action.value(), config);
             case QUEUE -> joinQueue(player, GameId.of(action.value()));
-            case SERVER -> plugin.transfers().transfer(player.getUniqueId(), com.bigbangcraft.hub.api.ServerId.of(action.value()))
-                    .whenComplete((result, error) -> onTransferResult(player, result, error));
+            case SERVER -> {
+                if (!player.hasPermission("bigbanghub.server.connect")) {
+                    player.sendMessage(message("permission-denied", "<red>Você não tem permissão.</red>"));
+                } else {
+                    plugin.transfers().transfer(player.getUniqueId(), com.bigbangcraft.hub.api.ServerId.of(action.value()))
+                            .whenComplete((result, error) -> onTransferResult(player, result, error));
+                }
+            }
             case CLOSE -> player.closeInventory();
             case MESSAGE -> player.sendMessage(miniMessage.deserialize(action.value()));
             case SOUND -> playSound(player, action.value());
@@ -50,6 +56,17 @@ final class ActionExecutor {
             return;
         }
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+    }
+
+    private void playerCommand(Player player, String configured, HubConfigSnapshot config) {
+        String command = replacePlayerPlaceholders(configured, player).replaceFirst("^/", "");
+        String root = command.split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        String game = config.aliases().get(root);
+        if (game != null && command.equals(root)) {
+            joinQueue(player, GameId.of(game));
+            return;
+        }
+        player.performCommand(command);
     }
 
     private void joinQueue(Player player, GameId gameId) {

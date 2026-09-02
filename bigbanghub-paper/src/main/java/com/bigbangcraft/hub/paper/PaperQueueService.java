@@ -10,6 +10,7 @@ import com.bigbangcraft.hub.api.QueueStatus;
 import com.bigbangcraft.hub.common.MessagePayloads;
 import com.bigbangcraft.hub.common.MessageType;
 import com.bigbangcraft.hub.common.ProtocolEnvelope;
+import com.bigbangcraft.hub.common.ProtocolValidationException;
 
 import java.util.Map;
 import java.util.Objects;
@@ -90,7 +91,7 @@ final class PaperQueueService implements QueueService {
                 membership.remove(expectedPlayer);
             }
             return QueueResult.of(response.code(), response.game().orElse(null), response.position(), response.size(), response.message());
-        } catch (Exception exception) {
+        } catch (ProtocolValidationException | IllegalArgumentException exception) {
             return QueueResult.of(QueueResult.Code.ERROR, null, 0, 0, "Resposta inválida do proxy.");
         }
     }

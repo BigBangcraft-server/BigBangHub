@@ -237,3 +237,21 @@ A integridade do grupo independe do servidor Paper onde os jogadores estão situ
 2. **Rejeição de Falsa Identidade**: Requisições de plugin messaging onde o UUID do cabeçalho diverge do UUID do jogador na conexão de rede são rejeitadas com erro de segurança.
 3. **Imutabilidade em Fila e Partida**: Quando uma party está em estado `QUEUED`, `ASSIGNED` ou `IN_MATCH`, modificações estruturais (convidar, expulsar, transferir líder, sair) são rejeitadas com `PARTY_MUTATION_LOCKED`.
 4. **Varredura Periódica Centralizada**: A limpeza de convites expirados e lideranças abandonadas é executada na tarefa de sweep periódica do proxy, sem introduzir threads ou timers por jogador.
+
+---
+
+## 10. Filas de Grupo e Matchmaking Atômico
+
+O BigBangHub 0.4.0 garante coesão social absoluta em partidas multiplayer através de matchmaking atômico para parties:
+
+### Entrada e Saída da Fila
+1. **Autoridade do Líder**: Apenas o líder da party pode colocar o grupo na fila (`/queue join <game>`) ou retirá-lo (`/queue leave`). Comandos de fila executados por membros comuns são rejeitados com feedback claro.
+2. **Notificações Sincronizadas**: Ao entrar ou sair da fila, todos os membros conectados da party recebem avisos imediatos.
+3. **Consulta de Status Delegada**: Quando um membro executa `/queue status`, o sistema consulta a posição e status da fila associados ao líder da party.
+4. **Resiliência a Desconexões na Fila**: Caso qualquer membro da party desconecte enquanto o grupo estiver em `QUEUED`, a party é imediatamente removida da fila e retorna a `IDLE`, alertando os membros restantes.
+
+### Invariantes do Matchmaking Atômico
+1. **Indivisibilidade (No-Split)**: Uma party de tamanho $N$ é tratada como uma entidade atômica. Se uma instância ou partida possui vagas disponíveis menores que $N$, a party **não é dividida**. O despachador busca outra instância apta ou aguarda vagas suficientes.
+2. **Reserva All-or-Nothing e Rollback**: A reserva de capacidade no servidor de destino é estritamente atômica. Se qualquer membro do grupo falhar ao reservar slot (por timeout ou contenção concorrente), **todas as reservas já feitas para aquela party são canceladas imediatamente**.
+3. **Tickets e Encaminhamento Unificado**: Todos os membros recebem `AdmissionTicket` válidos apontando para o mesmo `matchId` e `instanceId`. O grupo transita de `QUEUED` para `ASSIGNED` e todos os membros iniciam a transferência de rede em paralelo.
+4. **Transição para Partida**: À medida que os membros são validados e admitidos pelo backend, a party transita para `IN_MATCH`. No encerramento da partida ou retorno ao Hub, a party retorna automaticamente para `IDLE` preservando seus membros.

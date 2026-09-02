@@ -1,0 +1,11 @@
+proxy:
+  channel: bigbanghub:main
+  protocol-version: 1
+  hub-server-name: hubminigame
+  shared-secret-environment: BIGBANGHUB_MESSAGE_SECRET
+  require-hmac: false
+  max-payload-bytes: 16384
+
+aliases: {}
+allow-console-commands: false
+console-command-allowlist: []

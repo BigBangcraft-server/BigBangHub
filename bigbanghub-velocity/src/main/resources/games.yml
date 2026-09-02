@@ -1,0 +1,25 @@
+games:
+  bedwars:
+    display-name: BedWars
+    enabled: true
+    queue:
+      enabled: true
+      min-players: 2
+      max-players: 10
+      strategy: FILL_WAITING
+  campominado:
+    display-name: Campo Minado
+    enabled: true
+    queue:
+      enabled: true
+      min-players: 2
+      max-players: 10
+      strategy: FILL_WAITING
+  hg:
+    display-name: HG
+    enabled: true
+    queue:
+      enabled: true
+      min-players: 2
+      max-players: 10
+      strategy: FILL_WAITING

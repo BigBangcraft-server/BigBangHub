@@ -1,0 +1,12 @@
+compass:
+  title: '<gold>BigBangCraft</gold>'
+  rows: 1
+  item:
+    enabled: false
+    slot: 4
+    material: COMPASS
+    name: Compass
+    lore: []
+    glow: false
+    flags: []
+  items: {}

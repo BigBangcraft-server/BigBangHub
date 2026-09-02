@@ -1,0 +1,19 @@
+plugins {
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':bigbanghub-common')
+    compileOnly "com.velocitypowered:velocity-api:${rootProject.velocityApiVersion}"
+    compileOnly 'com.google.inject:guice:7.0.0'
+}
+
+tasks.jar { enabled = false }
+tasks.shadowJar {
+    archiveBaseName = 'bigbanghub-velocity'
+    archiveClassifier = ''
+    archiveVersion = rootProject.version
+    configurations = [project.configurations.runtimeClasspath]
+    relocate 'org.yaml.snakeyaml', 'com.bigbangcraft.hub.libs.snakeyaml'
+}
+tasks.build { dependsOn tasks.shadowJar }

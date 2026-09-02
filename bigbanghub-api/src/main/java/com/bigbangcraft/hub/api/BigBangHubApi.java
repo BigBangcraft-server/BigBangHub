@@ -31,6 +31,10 @@ public interface BigBangHubApi {
         throw new UnsupportedOperationException("Match manager not supported on this platform");
     }
 
+    default PartyService parties() {
+        throw new UnsupportedOperationException("Party service not supported on this platform");
+    }
+
     void addQueueListener(Consumer<QueueEvent> listener);
 
     void removeQueueListener(Consumer<QueueEvent> listener);
@@ -45,5 +49,11 @@ public interface BigBangHubApi {
     }
 
     default void removeMatchListener(Consumer<MatchEvent> listener) {
+    }
+
+    default void addPartyListener(Consumer<PartyEvent> listener) {
+    }
+
+    default void removePartyListener(Consumer<PartyEvent> listener) {
     }
 }

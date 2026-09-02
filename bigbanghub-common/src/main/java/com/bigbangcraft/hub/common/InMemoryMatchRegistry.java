@@ -360,7 +360,14 @@ public final class InMemoryMatchRegistry {
                 session = matches.get(activeMatchId);
             }
             if (session == null) {
-                throw new MatchException(MatchException.ErrorCode.MATCH_NOT_FOUND, "Match not found: " + ticket.matchId());
+                MatchDefinition def = MatchDefinition.builder()
+                        .gameId(GameId.of(ticket.instanceId().value().replaceAll("-\\d+$", "")))
+                        .minPlayers(2)
+                        .maxPlayers(20)
+                        .allowLateJoin(true)
+                        .build();
+                session = createMatch(ticket.matchId(), def, ticket.instanceId(), UUID.randomUUID(), now);
+                session.stateMachine().transition(MatchState.CREATED, MatchState.WAITING, now);
             }
         }
 

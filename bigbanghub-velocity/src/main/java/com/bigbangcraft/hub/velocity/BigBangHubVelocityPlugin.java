@@ -1089,10 +1089,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             Duration admissionTtl = configSnapshot().match().admissionTimeout();
             List<AdmissionTicket> tickets = new ArrayList<>(groupSize);
             Optional<PartyId> partyIdOpt = (party != null) ? Optional.of(party.partyId()) : Optional.empty();
-            if (targetMatchId != null) {
-                for (UUID memberId : groupMembers) {
-                    tickets.add(ticketService.issue(memberId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl, partyIdOpt));
-                }
+            MatchId effectiveMatchId = (targetMatchId != null) ? targetMatchId : MatchId.random();
+            for (UUID memberId : groupMembers) {
+                tickets.add(ticketService.issue(memberId, effectiveMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl, partyIdOpt));
             }
 
             for (UUID memberId : groupMembers) {

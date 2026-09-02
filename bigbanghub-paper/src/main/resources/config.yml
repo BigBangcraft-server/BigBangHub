@@ -32,6 +32,7 @@ match:
   auto-create-match: true
   reconnect-timeout: 60s
   auto-reconnect: true
+  post-match-timeout: 15s
 
 allow-console-commands: false
 console-command-allowlist: []

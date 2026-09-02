@@ -19,6 +19,14 @@ commands:
   reconnect:
     description: Reconnect to an in-progress match
     usage: /reconnect
+  playagain:
+    description: Re-queue for another match of the same game
+    aliases: [again]
+    usage: /playagain
+  rematch:
+    description: Vote for a rematch with the current match players
+    aliases: [revanche]
+    usage: /rematch
 permissions:
   bigbanghub.admin:
     default: op

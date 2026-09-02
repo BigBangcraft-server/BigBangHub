@@ -81,6 +81,22 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
                 return true;
             });
         }
+        if (getCommand("playagain") != null) {
+            getCommand("playagain").setExecutor((sender, cmd, label, args) -> {
+                if (sender instanceof Player p) {
+                    p.sendMessage("§eEncaminhando solicitação de Jogar Novamente ao proxy...");
+                }
+                return true;
+            });
+        }
+        if (getCommand("rematch") != null) {
+            getCommand("rematch").setExecutor((sender, cmd, label, args) -> {
+                if (sender instanceof Player p) {
+                    p.sendMessage("§eEncaminhando voto de revanche ao proxy...");
+                }
+                return true;
+            });
+        }
 
         if (snapshot.role() == ServerRole.HUB) {
             getCommand("queue").setExecutor(new QueueCommand(this));

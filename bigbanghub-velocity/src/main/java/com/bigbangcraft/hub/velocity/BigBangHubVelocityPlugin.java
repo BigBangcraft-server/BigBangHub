@@ -71,6 +71,7 @@ import com.bigbangcraft.hub.common.ProtocolCodec;
 import com.bigbangcraft.hub.common.ProtocolEnvelope;
 import com.bigbangcraft.hub.common.ProtocolValidationException;
 import com.bigbangcraft.hub.common.QueueEventBus;
+import com.bigbangcraft.hub.common.RematchService;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.event.Subscribe;
@@ -166,6 +167,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private ScheduledTask livenessTask;
     private InMemoryPartyService partyService;
     private PartyEventBus partyEventBus;
+    private RematchService rematchService;
 
     @Inject
     public BigBangHubVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -195,6 +197,12 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("reconnect").plugin(this).build(),
                     new VelocityReconnectCommand(this));
+            proxy.getCommandManager().register(
+                    proxy.getCommandManager().metaBuilder("playagain").aliases("again").plugin(this).build(),
+                    new VelocityPlayAgainCommand(this));
+            proxy.getCommandManager().register(
+                    proxy.getCommandManager().metaBuilder("rematch").aliases("revanche").plugin(this).build(),
+                    new VelocityRematchCommand(this));
             logger.info("BigBangHub Velocity 0.3.0 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
@@ -683,12 +691,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             if (finished) {
                 logger.info("Match {} finished on {} (outcome: {}, duration: {}ms)",
                         finish.matchId(), finish.instanceId(), outcome, finish.durationMillis());
-                // Safe return all players
-                matchRegistry.findSession(finish.matchId()).ifPresent(session -> {
-                    safeReturnPlayersToHub(
-                            session.participants().stream().map(MatchParticipant::playerId).toList(),
-                            ReturnReason.MATCH_FINISHED, "Match ended");
-                });
+                handlePostMatchDecision(finish.matchId());
             }
         } catch (ProtocolValidationException e) {
             logger.warn("Invalid match finish payload: {}", e.getMessage());
@@ -711,6 +714,153 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             }
         } catch (ProtocolValidationException e) {
             logger.warn("Invalid match abort payload: {}", e.getMessage());
+        }
+    }
+
+    void handlePostMatchDecision(MatchId matchId) {
+        matchRegistry.findSession(matchId).ifPresent(session -> {
+            HubConfigSnapshot snapshot = configSnapshot();
+            Duration postTimeout = snapshot.match().postMatchTimeout();
+            List<UUID> playerIds = session.participants().stream().map(MatchParticipant::playerId).toList();
+
+            if (postTimeout.isZero() || postTimeout.isNegative()) {
+                safeReturnPlayersToHub(playerIds, ReturnReason.MATCH_FINISHED, "Match ended");
+                return;
+            }
+
+            if (rematchService != null) {
+                rematchService.createSession(matchId, session.definition().gameId(), playerIds, postTimeout, Instant.now());
+            }
+
+            long seconds = postTimeout.getSeconds();
+            Component prompt = Component.text("\n§6§l========================================\n")
+                    .append(Component.text("§e§l              FIM DE PARTIDA!\n\n"))
+                    .append(Component.text("  "))
+                    .append(Component.text("§a§l[▶ JOGAR NOVAMENTE]")
+                            .clickEvent(ClickEvent.runCommand("/playagain"))
+                            .hoverEvent(HoverEvent.showText(Component.text("§7Entrar na fila para uma nova partida"))))
+                    .append(Component.text("   "))
+                    .append(Component.text("§b§l[⚔ REVANCHE]")
+                            .clickEvent(ClickEvent.runCommand("/rematch"))
+                            .hoverEvent(HoverEvent.showText(Component.text("§7Votar por revanche contra os mesmos jogadores"))))
+                    .append(Component.text("\n\n§7Você tem " + seconds + "s para decidir antes de retornar ao Hub.\n"))
+                    .append(Component.text("§6§l========================================\n"));
+
+            for (UUID pid : playerIds) {
+                proxy.getPlayer(pid).ifPresent(p -> p.sendMessage(prompt));
+            }
+
+            proxy.getScheduler().buildTask(this, () -> {
+                Instant now = Instant.now();
+                if (rematchService != null) {
+                    rematchService.sweep(now);
+                }
+                for (UUID pid : playerIds) {
+                    proxy.getPlayer(pid).ifPresent(p -> {
+                        boolean inQueue = queues != null && queues.contains(pid);
+                        boolean inNewMatch = matchRegistry != null && matchRegistry.findActiveForPlayer(pid).isPresent();
+                        if (!inQueue && !inNewMatch) {
+                            safeReturnPlayerToHub(pid, ReturnReason.MATCH_FINISHED, "Post-match timeout");
+                        }
+                    });
+                }
+            }).delay(postTimeout).schedule();
+        });
+    }
+
+    public void handlePlayAgain(Player player) {
+        UUID playerId = player.getUniqueId();
+        Instant now = Instant.now();
+
+        if (partyService != null) {
+            Optional<PartySnapshot> partyOpt = partyService.partyOf(playerId);
+            if (partyOpt.isPresent()) {
+                PartySnapshot party = partyOpt.get();
+                if (!party.leader().equals(playerId)) {
+                    player.sendPlainMessage("§cApenas o líder da party pode solicitar Jogar Novamente.");
+                    return;
+                }
+                GameId targetGame = resolveRecentGame(playerId, now);
+                if (targetGame == null) {
+                    player.sendPlainMessage("§cNão foi possível identificar o jogo para jogar novamente.");
+                    return;
+                }
+                if (rematchService != null) {
+                    for (UUID memberId : party.memberIds()) {
+                        rematchService.removePlayer(memberId);
+                    }
+                }
+                join(player, targetGame);
+                for (UUID memberId : party.memberIds()) {
+                    if (!memberId.equals(playerId)) {
+                        proxy.getPlayer(memberId).ifPresent(m ->
+                                m.sendPlainMessage("§a[BigBangHub] O líder colocou a party na fila para jogar novamente!"));
+                    }
+                }
+                return;
+            }
+        }
+
+        GameId targetGame = resolveRecentGame(playerId, now);
+        if (targetGame == null) {
+            player.sendPlainMessage("§cNão foi possível identificar o jogo para jogar novamente.");
+            return;
+        }
+        if (rematchService != null) {
+            rematchService.removePlayer(playerId);
+        }
+        join(player, targetGame);
+    }
+
+    public void handleRematchVote(Player player) {
+        UUID playerId = player.getUniqueId();
+        Instant now = Instant.now();
+
+        if (rematchService == null) {
+            player.sendPlainMessage("§cRevanche não está disponível.");
+            return;
+        }
+
+        Optional<RematchService.RematchVoteResult> resultOpt = rematchService.vote(playerId, now);
+        if (resultOpt.isEmpty()) {
+            player.sendPlainMessage("§cVocê não possui nenhuma partida elegível para revanche.");
+            return;
+        }
+
+        RematchService.RematchVoteResult result = resultOpt.get();
+        for (UUID pid : result.participants()) {
+            proxy.getPlayer(pid).ifPresent(p ->
+                    p.sendPlainMessage("§e[Rematch] " + player.getUsername() + " votou por revanche! ("
+                            + result.currentVotes() + "/" + result.requiredVotes() + ")"));
+        }
+
+        if (result.consensusReached()) {
+            for (UUID pid : result.participants()) {
+                proxy.getPlayer(pid).ifPresent(p ->
+                        p.sendPlainMessage("§a[Rematch] Revanche aceita por todos os jogadores! Iniciando nova partida..."));
+            }
+            startRematchGame(result.gameId(), result.participants());
+        }
+    }
+
+    private GameId resolveRecentGame(UUID playerId, Instant now) {
+        if (rematchService != null) {
+            Optional<MatchId> mid = rematchService.activeSessionForPlayer(playerId, now);
+            if (mid.isPresent()) {
+                Optional<RematchService.RematchSession> sess = rematchService.findSession(mid.get());
+                if (sess.isPresent()) return sess.get().gameId();
+            }
+        }
+        if (matchRegistry != null) {
+            Optional<MatchSnapshot> match = matchRegistry.findActiveForPlayer(playerId);
+            if (match.isPresent()) return match.get().gameId();
+        }
+        return null;
+    }
+
+    private void startRematchGame(GameId gameId, Collection<UUID> participants) {
+        for (UUID pid : participants) {
+            proxy.getPlayer(pid).ifPresent(p -> join(p, gameId));
         }
     }
 
@@ -1530,6 +1680,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
         partyEventBus = new PartyEventBus();
         partyService = new InMemoryPartyService(snapshot.party(), partyEventBus);
+        rematchService = new RematchService();
 
         games.set(nextGames);
         servers.set(nextServers);
@@ -1683,4 +1834,5 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public void removeMatchListener(Consumer<MatchEvent> listener) { matchEventBus.remove(listener); }
     @Override public void addPartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.add(listener); }
     @Override public void removePartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.remove(listener); }
+    public RematchService rematchService() { return rematchService; }
 }

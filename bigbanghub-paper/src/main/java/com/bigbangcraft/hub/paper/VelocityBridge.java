@@ -55,11 +55,32 @@ final class VelocityBridge implements PluginMessageListener {
         return future;
     }
 
+    void sendAny(MessageType type, byte[] payload) {
+        Runnable send = () -> {
+            Player player = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+            if (player == null || !player.isOnline()) return;
+            try {
+                player.sendPluginMessage(plugin, channel,
+                        codec.encode(new ProtocolEnvelope(ProtocolCodec.PROTOCOL_VERSION, type, UUID.randomUUID(), payload)));
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Failed to send plugin message: " + exception.getMessage());
+            }
+        };
+        if (Bukkit.isPrimaryThread()) send.run();
+        else Bukkit.getScheduler().runTask(plugin, send);
+    }
+
     @Override
     public void onPluginMessageReceived(String incomingChannel, Player player, byte[] message) {
         if (!channel.equals(incomingChannel)) return;
         try {
             ProtocolEnvelope envelope = codec.decode(message);
+            if (envelope.messageType() == MessageType.INSTANCE_REGISTER_ACK) {
+                if (plugin.instanceAgent() != null) {
+                    plugin.instanceAgent().onRegisterAck(envelope.payload());
+                }
+                return;
+            }
             if (envelope.messageType() != MessageType.QUEUE_RESPONSE
                     && envelope.messageType() != MessageType.SERVER_RESPONSE) return;
             CompletableFuture<ProtocolEnvelope> future = pending.remove(envelope.correlationId());

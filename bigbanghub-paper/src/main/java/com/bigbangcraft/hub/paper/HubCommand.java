@@ -34,9 +34,17 @@ final class HubCommand implements CommandExecutor, TabCompleter {
             }
             case "status" -> {
                 if (!sender.hasPermission("bigbanghub.admin")) return deny(sender);
-                sender.sendMessage("§bBigBangHub §f0.2.0");
+                sender.sendMessage("§bBigBangHub §f0.2.0 §7| Role: §e" + plugin.role());
                 sender.sendMessage("§7Paper bridge: §aONLINE §7| Protocol: §f" + plugin.configSnapshot().proxy().protocolVersion());
-                sender.sendMessage("§7Games: §f" + plugin.games().games().size() + " §7| Queued players: §funknown (proxy-owned)");
+                if (plugin.instanceAgent() != null) {
+                    PaperInstanceAgent agent = plugin.instanceAgent();
+                    sender.sendMessage("§7Instance: §f" + agent.instanceId().value() + " §7(Game: §f" + agent.gameId().value() + "§7)");
+                    sender.sendMessage("§7State: §f" + agent.state() + " §7| Accepting: §f" + agent.isAcceptingPlayers()
+                            + " §7| Registered: §f" + (agent.isRegistered() ? "§aYES" : "§cNO"));
+                    sender.sendMessage("§7Session: §f" + agent.sessionId());
+                } else {
+                    sender.sendMessage("§7Games: §f" + plugin.games().games().size() + " §7| Queued players: §funknown (proxy-owned)");
+                }
             }
             default -> sender.sendMessage("§7Use: /bbhub <reload|compass|version|status>");
         }

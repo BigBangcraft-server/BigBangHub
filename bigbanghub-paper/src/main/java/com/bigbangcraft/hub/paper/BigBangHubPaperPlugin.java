@@ -2,16 +2,20 @@ package com.bigbangcraft.hub.paper;
 
 import com.bigbangcraft.hub.api.BigBangHubApi;
 import com.bigbangcraft.hub.api.GameRegistry;
+import com.bigbangcraft.hub.api.InstanceRegistry;
+import com.bigbangcraft.hub.api.InstanceService;
 import com.bigbangcraft.hub.api.PlayerTransferService;
 import com.bigbangcraft.hub.api.QueueService;
 import com.bigbangcraft.hub.api.RoutingService;
 import com.bigbangcraft.hub.api.ServerRegistry;
+import com.bigbangcraft.hub.api.ServerRole;
 import com.bigbangcraft.hub.common.ConfigException;
 import com.bigbangcraft.hub.common.ConfigLoader;
 import com.bigbangcraft.hub.common.FillWaitingRoutingService;
 import com.bigbangcraft.hub.common.HubConfigSnapshot;
 import com.bigbangcraft.hub.common.InMemoryGameRegistry;
 import com.bigbangcraft.hub.common.InMemoryServerRegistry;
+import com.bigbangcraft.hub.common.InstanceAgentSettings;
 import com.bigbangcraft.hub.common.ProtocolCodec;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.ServicePriority;
@@ -19,6 +23,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHubApi {
@@ -30,12 +35,14 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
     private VelocityBridge bridge;
     private PaperQueueService queues;
     private PaperTransferService transfers;
+    private PaperInstanceAgent instanceAgent;
 
     @Override
     public void onEnable() {
         saveDefaults();
+        HubConfigSnapshot snapshot;
         try {
-            HubConfigSnapshot snapshot = load();
+            snapshot = load();
             ProtocolCodec codec = codec(snapshot);
             bridge = new VelocityBridge(this, snapshot.proxy().channel(), codec);
             queues = new PaperQueueService(bridge);
@@ -46,17 +53,33 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+
         getServer().getServicesManager().register(BigBangHubApi.class, this, this, ServicePriority.Normal);
         getCommand("bbhub").setExecutor(new HubCommand(this));
         getCommand("bbhub").setTabCompleter(new HubCommand(this));
-        getCommand("queue").setExecutor(new QueueCommand(this));
-        getCommand("queue").setTabCompleter(new QueueCommand(this));
-        getServer().getPluginManager().registerEvents(new PaperListener(this), this);
-        getLogger().info("BigBangHub Paper enabled with " + games().games().size() + " games");
+
+        if (snapshot.role() == ServerRole.HUB) {
+            getCommand("queue").setExecutor(new QueueCommand(this));
+            getCommand("queue").setTabCompleter(new QueueCommand(this));
+            getServer().getPluginManager().registerEvents(new PaperListener(this), this);
+            getLogger().info("BigBangHub Paper enabled in HUB role with " + games().games().size() + " games");
+        } else if (snapshot.role() == ServerRole.MINIGAME || snapshot.instance().isPresent()) {
+            InstanceAgentSettings agentSettings = snapshot.instance().orElseGet(() ->
+                    InstanceAgentSettings.of(getServer().getName(), "default", getServer().getName(),
+                            java.time.Duration.ofSeconds(3), 2, 10));
+            instanceAgent = new PaperInstanceAgent(this, bridge, agentSettings);
+            instanceAgent.start();
+            getServer().getPluginManager().registerEvents(new PaperInstanceListener(this, instanceAgent), this);
+            getLogger().info("BigBangHub Paper enabled in MINIGAME agent role for " + agentSettings.instanceId()
+                    + " (" + agentSettings.gameId() + ")");
+        } else {
+            getLogger().info("BigBangHub Paper enabled in GENERIC role");
+        }
     }
 
     @Override
     public void onDisable() {
+        if (instanceAgent != null) instanceAgent.stop();
         if (bridge != null) bridge.close();
         getServer().getServicesManager().unregister(BigBangHubApi.class, this);
         getServer().getScheduler().cancelTasks(this);
@@ -125,9 +148,13 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
 
     HubConfigSnapshot configSnapshot() { return Objects.requireNonNull(config.get(), "plugin is not enabled"); }
     CompassMenuController menu() { return menu.get(); }
+    public PaperInstanceAgent instanceAgent() { return instanceAgent; }
 
+    @Override public ServerRole role() { return configSnapshot().role(); }
     @Override public GameRegistry games() { return games.get(); }
     @Override public ServerRegistry servers() { return servers.get(); }
+    @Override public InstanceRegistry instances() { return InstanceRegistry.empty(); }
+    @Override public Optional<InstanceService> instance() { return Optional.ofNullable(instanceAgent); }
     @Override public QueueService queues() { return queues; }
     @Override public RoutingService routing() { return routing.get(); }
     @Override public PlayerTransferService transfers() { return transfers; }

@@ -26,6 +26,15 @@ public final class MessagePayloads {
     public record QueueResponse(UUID playerId, QueueResult.Code code, Optional<GameId> game,
                                 int position, int size, String message) { }
     public record ServerResponse(UUID playerId, boolean success, String message) { }
+    public record InstanceRegister(ServerId instanceId, GameId gameId, String serverName, UUID sessionId,
+                                  GameStateWire state, int playerCount, int minPlayers, int maxPlayers,
+                                  boolean acceptingPlayers) { }
+    public record InstanceHeartbeat(ServerId instanceId, UUID sessionId, GameStateWire state,
+                                    int playerCount, int maxPlayers, boolean acceptingPlayers) { }
+    public record InstanceUnregister(ServerId instanceId, UUID sessionId, String reason) { }
+    public record InstanceStateChange(ServerId instanceId, UUID sessionId, GameStateWire state,
+                                      boolean acceptingPlayers, int playerCount, int maxPlayers) { }
+    public record InstanceRegisterAck(ServerId instanceId, UUID sessionId, boolean success, String message) { }
 
     public enum GameStateWire { OFFLINE, STARTING, WAITING, STARTING_GAME, IN_GAME, ENDING, FULL, MAINTENANCE }
 
@@ -106,6 +115,133 @@ public final class MessagePayloads {
 
     public static ServerResponse serverResponse(byte[] payload) throws ProtocolValidationException {
         return read(payload, input -> new ServerResponse(uuid(input), input.readBoolean(), text(input)), "server response");
+    }
+
+    public static byte[] instanceRegister(InstanceRegister register) {
+        return write(out -> {
+            text(out, register.instanceId().value());
+            text(out, register.gameId().value());
+            text(out, register.serverName());
+            uuid(out, register.sessionId());
+            out.writeByte(register.state().ordinal());
+            out.writeInt(register.playerCount());
+            out.writeInt(register.minPlayers());
+            out.writeInt(register.maxPlayers());
+            out.writeBoolean(register.acceptingPlayers());
+        });
+    }
+
+    public static InstanceRegister instanceRegister(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            ServerId instanceId = ServerId.of(text(input));
+            GameId gameId = GameId.of(text(input));
+            String serverName = text(input);
+            if (serverName.isBlank() || serverName.length() > 64) throw new IOException("Invalid server name");
+            UUID sessionId = uuid(input);
+            int state = input.readUnsignedByte();
+            if (state >= GameStateWire.values().length) throw new IOException("Invalid state");
+            int playerCount = input.readInt();
+            int minPlayers = input.readInt();
+            int maxPlayers = input.readInt();
+            boolean acceptingPlayers = input.readBoolean();
+            if (playerCount < 0 || minPlayers < 0 || maxPlayers < 1 || maxPlayers > 1000 || minPlayers > maxPlayers) {
+                throw new IOException("Invalid capacity values");
+            }
+            return new InstanceRegister(instanceId, gameId, serverName, sessionId,
+                    GameStateWire.values()[state], playerCount, minPlayers, maxPlayers, acceptingPlayers);
+        }, "instance register");
+    }
+
+    public static byte[] instanceHeartbeat(InstanceHeartbeat heartbeat) {
+        return write(out -> {
+            text(out, heartbeat.instanceId().value());
+            uuid(out, heartbeat.sessionId());
+            out.writeByte(heartbeat.state().ordinal());
+            out.writeInt(heartbeat.playerCount());
+            out.writeInt(heartbeat.maxPlayers());
+            out.writeBoolean(heartbeat.acceptingPlayers());
+        });
+    }
+
+    public static InstanceHeartbeat instanceHeartbeat(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            ServerId instanceId = ServerId.of(text(input));
+            UUID sessionId = uuid(input);
+            int state = input.readUnsignedByte();
+            if (state >= GameStateWire.values().length) throw new IOException("Invalid state");
+            int playerCount = input.readInt();
+            int maxPlayers = input.readInt();
+            boolean acceptingPlayers = input.readBoolean();
+            if (playerCount < 0 || maxPlayers < 1 || maxPlayers > 1000) {
+                throw new IOException("Invalid capacity values");
+            }
+            return new InstanceHeartbeat(instanceId, sessionId, GameStateWire.values()[state],
+                    playerCount, maxPlayers, acceptingPlayers);
+        }, "instance heartbeat");
+    }
+
+    public static byte[] instanceUnregister(InstanceUnregister unregister) {
+        return write(out -> {
+            text(out, unregister.instanceId().value());
+            uuid(out, unregister.sessionId());
+            text(out, unregister.reason());
+        });
+    }
+
+    public static InstanceUnregister instanceUnregister(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            ServerId instanceId = ServerId.of(text(input));
+            UUID sessionId = uuid(input);
+            String reason = text(input);
+            return new InstanceUnregister(instanceId, sessionId, reason);
+        }, "instance unregister");
+    }
+
+    public static byte[] instanceStateChange(InstanceStateChange stateChange) {
+        return write(out -> {
+            text(out, stateChange.instanceId().value());
+            uuid(out, stateChange.sessionId());
+            out.writeByte(stateChange.state().ordinal());
+            out.writeBoolean(stateChange.acceptingPlayers());
+            out.writeInt(stateChange.playerCount());
+            out.writeInt(stateChange.maxPlayers());
+        });
+    }
+
+    public static InstanceStateChange instanceStateChange(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            ServerId instanceId = ServerId.of(text(input));
+            UUID sessionId = uuid(input);
+            int state = input.readUnsignedByte();
+            if (state >= GameStateWire.values().length) throw new IOException("Invalid state");
+            boolean acceptingPlayers = input.readBoolean();
+            int playerCount = input.readInt();
+            int maxPlayers = input.readInt();
+            if (playerCount < 0 || maxPlayers < 1 || maxPlayers > 1000) {
+                throw new IOException("Invalid capacity values");
+            }
+            return new InstanceStateChange(instanceId, sessionId, GameStateWire.values()[state],
+                    acceptingPlayers, playerCount, maxPlayers);
+        }, "instance state change");
+    }
+
+    public static byte[] instanceRegisterAck(InstanceRegisterAck ack) {
+        return write(out -> {
+            text(out, ack.instanceId().value());
+            uuid(out, ack.sessionId());
+            out.writeBoolean(ack.success());
+            text(out, ack.message());
+        });
+    }
+
+    public static InstanceRegisterAck instanceRegisterAck(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> {
+            ServerId instanceId = ServerId.of(text(input));
+            UUID sessionId = uuid(input);
+            boolean success = input.readBoolean();
+            String message = text(input);
+            return new InstanceRegisterAck(instanceId, sessionId, success, message);
+        }, "instance register ack");
     }
 
     private interface Writer { void write(DataOutputStream out) throws IOException; }

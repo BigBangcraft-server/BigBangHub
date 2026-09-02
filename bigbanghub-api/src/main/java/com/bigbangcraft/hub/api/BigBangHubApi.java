@@ -27,6 +27,10 @@ public interface BigBangHubApi {
         return Optional.empty();
     }
 
+    default MatchManager matches() {
+        throw new UnsupportedOperationException("Match manager not supported on this platform");
+    }
+
     void addQueueListener(Consumer<QueueEvent> listener);
 
     void removeQueueListener(Consumer<QueueEvent> listener);
@@ -35,5 +39,11 @@ public interface BigBangHubApi {
     }
 
     default void removeInstanceListener(Consumer<InstanceEvent> listener) {
+    }
+
+    default void addMatchListener(Consumer<MatchEvent> listener) {
+    }
+
+    default void removeMatchListener(Consumer<MatchEvent> listener) {
     }
 }

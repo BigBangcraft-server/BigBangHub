@@ -1,0 +1,6 @@
+messages:
+  proxy-unavailable: '<red>Não foi possível localizar um servidor agora. Tente novamente em alguns instantes.</red>'
+  game-unavailable: '<red>Este minigame está temporariamente indisponível.</red>'
+  transfer-started: '<green>Conectando ao servidor...</green>'
+  console-command-disabled: '<red>Esta ação administrativa está desabilitada.</red>'
+  console-command-denied: '<red>Comando não permitido.</red>'

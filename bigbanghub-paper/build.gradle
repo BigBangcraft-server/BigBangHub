@@ -1,0 +1,18 @@
+plugins {
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':bigbanghub-common')
+    compileOnly "io.papermc.paper:paper-api:${rootProject.paperApiVersion}"
+}
+
+tasks.jar { enabled = false }
+tasks.shadowJar {
+    archiveBaseName = 'bigbanghub-paper'
+    archiveClassifier = ''
+    archiveVersion = rootProject.version
+    configurations = [project.configurations.runtimeClasspath]
+    relocate 'org.yaml.snakeyaml', 'com.bigbangcraft.hub.libs.snakeyaml'
+}
+tasks.build { dependsOn tasks.shadowJar }

@@ -1,0 +1,45 @@
+compass:
+  enabled: true
+  slot: 4
+  material: COMPASS
+  name: '<aqua><bold>Selecionar Minigame</bold></aqua>'
+  lore:
+    - '<gray>Escolha onde jogar.</gray>'
+  glow: true
+  flags: []
+  title: '<gold><bold>BigBangCraft</bold></gold>'
+  rows: 3
+  items:
+    bedwars:
+      slot: 11
+      material: RED_BED
+      name: '<aqua><bold>BedWars</bold></aqua>'
+      lore:
+        - '<gray>Entre em uma partida.</gray>'
+        - ''
+        - '<green>Clique para jogar</green>'
+      action:
+        type: QUEUE
+        value: bedwars
+    campominado:
+      slot: 13
+      material: TNT
+      name: '<yellow><bold>Campo Minado</bold></yellow>'
+      lore:
+        - '<gray>Entre em uma partida.</gray>'
+        - ''
+        - '<green>Clique para jogar</green>'
+      action:
+        type: QUEUE
+        value: campominado
+    hg:
+      slot: 15
+      material: GOLDEN_APPLE
+      name: '<red><bold>HG</bold></red>'
+      lore:
+        - '<gray>Entre em uma partida.</gray>'
+        - ''
+        - '<green>Clique para jogar</green>'
+      action:
+        type: QUEUE
+        value: hg

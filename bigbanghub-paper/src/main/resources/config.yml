@@ -1,0 +1,41 @@
+# BigBangHub Paper configuration. Changes to menus, games and protection reload safely.
+proxy:
+  channel: bigbanghub:main
+  protocol-version: 1
+  hub-server-name: hubminigame
+  shared-secret-environment: BIGBANGHUB_MESSAGE_SECRET
+  require-hmac: false
+  max-payload-bytes: 16384
+
+aliases:
+  campominado: campominado
+
+allow-console-commands: false
+console-command-allowlist: []
+
+inventory:
+  clear-on-join: true
+  lock-lobby-items: true
+  prevent-drop: true
+  prevent-move: true
+
+protection:
+  block-break: true
+  block-place: true
+  item-drop: true
+  item-pickup: true
+  damage: true
+  pvp: true
+  hunger: true
+  mob-interactions: true
+  crafting: true
+  inventory-manipulation: true
+  weather: true
+  farmland-trampling: true
+  armor-stand-interaction: true
+  entity-interaction: true
+  bucket-use: true
+  fire: true
+  explosions: true
+  fluid-placement: true
+  void-safety: true

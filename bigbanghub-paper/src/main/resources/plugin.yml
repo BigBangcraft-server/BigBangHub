@@ -1,0 +1,33 @@
+name: BigBangHub
+version: '0.1.0'
+main: com.bigbangcraft.hub.paper.BigBangHubPaperPlugin
+api-version: '1.21'
+author: BigBangCraft
+description: Lightweight BigBangCraft hub, queue and proxy bridge
+softdepend: [FancyNpcs, FancyHolograms, WorldGuard, LuckPerms]
+commands:
+  bbhub:
+    description: BigBangHub administration and compass
+    usage: /bbhub <reload|compass|version|status>
+  queue:
+    description: Join and inspect minigame queues
+    usage: /queue <join|leave|status> [game]
+permissions:
+  bigbanghub.admin:
+    default: op
+  bigbanghub.reload:
+    default: op
+  bigbanghub.compass:
+    default: true
+  bigbanghub.queue.join:
+    default: true
+  bigbanghub.queue.leave:
+    default: true
+  bigbanghub.queue.status:
+    default: true
+  bigbanghub.server.connect:
+    default: true
+  bigbanghub.bypass.protection:
+    default: op
+  bigbanghub.bypass.inventory:
+    default: op

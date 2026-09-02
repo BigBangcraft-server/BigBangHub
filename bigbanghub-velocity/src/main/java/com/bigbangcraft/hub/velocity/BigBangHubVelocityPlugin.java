@@ -889,6 +889,18 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             Optional<MatchSnapshot> match = matchRegistry.findActiveForPlayer(playerId);
             if (match.isPresent()) return match.get().gameId();
         }
+        Player p = proxy.getPlayer(playerId).orElse(null);
+        if (p != null && p.getCurrentServer().isPresent()) {
+            String srvName = p.getCurrentServer().get().getServerInfo().getName();
+            if (instanceRegistry != null) {
+                Optional<InstanceSnapshot> inst = instanceRegistry.find(ServerId.of(srvName));
+                if (inst.isPresent()) return inst.get().gameId();
+            }
+            if (servers.get() != null) {
+                Optional<ServerDefinition> srvDef = servers.get().find(ServerId.of(srvName));
+                if (srvDef.isPresent()) return srvDef.get().gameId();
+            }
+        }
         return null;
     }
 

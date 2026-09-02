@@ -1158,11 +1158,37 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             long timeoutNanos = snapshot.registry().heartbeatTimeout().toNanos();
 
             for (InstanceSnapshot inst : instanceRegistry.instances()) {
-                if (inst.playerCount() == 0 && inst.activeReservations() == 0) {
-                    proxy.getServer(inst.serverName()).ifPresent(srv -> {
+                proxy.getServer(inst.serverName()).ifPresent(srv -> {
+                    if (srv.getPlayersConnected().isEmpty() && inst.activeReservations() == 0) {
                         srv.ping().whenComplete((pingResult, pingError) -> {
                             if (pingError == null && pingResult != null) {
-                                instanceRegistry.updateLiveness(inst.instanceId(), System.nanoTime(), Instant.now());
+                                int online = pingResult.getPlayers().map(com.velocitypowered.api.proxy.server.ServerPing.Players::getOnline).orElse(0);
+                                instanceRegistry.updatePingLiveness(inst.instanceId(), online, System.nanoTime(), Instant.now());
+                            }
+                        });
+                    }
+                });
+            }
+
+            for (ServerDefinition server : snapshot.servers()) {
+                if (instanceRegistry.find(server.id()).isEmpty()) {
+                    proxy.getServer(server.id().value()).ifPresent(srv -> {
+                        srv.ping().whenComplete((pingResult, pingError) -> {
+                            if (pingError == null && pingResult != null && instanceRegistry.find(server.id()).isEmpty()) {
+                                int online = pingResult.getPlayers().map(com.velocitypowered.api.proxy.server.ServerPing.Players::getOnline).orElse(0);
+                                int max = pingResult.getPlayers().map(com.velocitypowered.api.proxy.server.ServerPing.Players::getMax).orElse(server.maxPlayers());
+                                MessagePayloads.InstanceRegister reg = new MessagePayloads.InstanceRegister(
+                                        server.id(),
+                                        server.gameId(),
+                                        server.id().value(),
+                                        UUID.randomUUID(),
+                                        MessagePayloads.GameStateWire.WAITING,
+                                        online,
+                                        2,
+                                        max,
+                                        true);
+                                instanceRegistry.register(reg, System.nanoTime(), Instant.now());
+                                logger.info("Discovered and registered online backend instance {} for game {}", server.id(), server.gameId());
                             }
                         });
                     });

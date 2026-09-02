@@ -138,6 +138,10 @@ public final class InMemoryInstanceRegistry implements InstanceRegistry {
             this.acceptingPlayers = accepting;
         }
 
+        public synchronized void setPlayerCount(int count) {
+            this.playerCount = count;
+        }
+
         public synchronized void updateState(GameState newState, boolean accepting, int players, int max) {
             this.state = newState;
             this.acceptingPlayers = accepting;
@@ -235,6 +239,22 @@ public final class InMemoryInstanceRegistry implements InstanceRegistry {
         Entry entry = instances.get(instanceId);
         if (entry == null) return false;
         InstanceHealth oldHealth = entry.health();
+        entry.updateLiveness(nowNanos, now);
+        if (oldHealth != InstanceHealth.HEALTHY) {
+            entry.setHealth(InstanceHealth.HEALTHY);
+            entry.setAcceptingPlayers(true);
+            events.publish(new InstanceHealthChangedEvent(instanceId, oldHealth, InstanceHealth.HEALTHY));
+        }
+        return true;
+    }
+
+    public boolean updatePingLiveness(ServerId instanceId, int playerCount, long nowNanos, Instant now) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(now, "now");
+        Entry entry = instances.get(instanceId);
+        if (entry == null) return false;
+        InstanceHealth oldHealth = entry.health();
+        entry.setPlayerCount(playerCount);
         entry.updateLiveness(nowNanos, now);
         if (oldHealth != InstanceHealth.HEALTHY) {
             entry.setHealth(InstanceHealth.HEALTHY);

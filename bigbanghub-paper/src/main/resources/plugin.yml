@@ -12,6 +12,10 @@ commands:
   queue:
     description: Join and inspect minigame queues
     usage: /queue <join|leave|status> [game]
+  party:
+    description: Party management and group communication
+    aliases: [p]
+    usage: /party <invite|accept|decline|leave|kick|leader|disband|list>
 permissions:
   bigbanghub.admin:
     default: op
@@ -25,6 +29,12 @@ permissions:
     default: true
   bigbanghub.queue.status:
     default: true
+  bigbanghub.party.use:
+    default: true
+  bigbanghub.party.invite:
+    default: true
+  bigbanghub.party.admin:
+    default: op
   bigbanghub.server.connect:
     default: true
   bigbanghub.bypass.protection:

@@ -6,12 +6,15 @@ import com.bigbangcraft.hub.api.InstanceRegistry;
 import com.bigbangcraft.hub.api.InstanceService;
 import com.bigbangcraft.hub.api.MatchEvent;
 import com.bigbangcraft.hub.api.MatchManager;
+import com.bigbangcraft.hub.api.PartyEvent;
+import com.bigbangcraft.hub.api.PartyService;
 import com.bigbangcraft.hub.api.PlayerTransferService;
 import com.bigbangcraft.hub.api.QueueEvent;
 import com.bigbangcraft.hub.api.QueueService;
 import com.bigbangcraft.hub.api.RoutingService;
 import com.bigbangcraft.hub.api.ServerRegistry;
 import com.bigbangcraft.hub.api.ServerRole;
+import com.bigbangcraft.hub.common.PartyEventBus;
 import com.bigbangcraft.hub.common.CompassMenu;
 import com.bigbangcraft.hub.common.ConfigException;
 import com.bigbangcraft.hub.common.ConfigLoader;
@@ -43,6 +46,8 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
     private PaperTransferService transfers;
     private PaperInstanceAgent instanceAgent;
     private PaperMatchManager matchManager;
+    private PaperPartyService partyService;
+    private PartyEventBus partyEventBus;
 
     @Override
     public void onEnable() {
@@ -59,10 +64,14 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
 
         queues = new PaperQueueService(bridge);
         transfers = new PaperTransferService(bridge);
+        partyEventBus = new PartyEventBus();
+        partyService = new PaperPartyService(bridge, snapshot.party(), partyEventBus);
         install(snapshot);
         getServer().getServicesManager().register(BigBangHubApi.class, this, this, ServicePriority.Normal);
         getCommand("bbhub").setExecutor(new HubCommand(this));
         getCommand("bbhub").setTabCompleter(new HubCommand(this));
+        getCommand("party").setExecutor(new PartyCommand(this));
+        getCommand("party").setTabCompleter(new PartyCommand(this));
 
         if (snapshot.role() == ServerRole.HUB) {
             getCommand("queue").setExecutor(new QueueCommand(this));
@@ -91,6 +100,7 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
         }
         if (instanceAgent != null) instanceAgent.stop();
         if (bridge != null) bridge.close();
+        if (partyService != null) partyService.clear();
         getServer().getServicesManager().unregister(BigBangHubApi.class, this);
         getServer().getScheduler().cancelTasks(this);
     }
@@ -165,6 +175,7 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
     @Override public Optional<InstanceService> instance() { return Optional.ofNullable(instanceAgent); }
     @Override public MatchManager matches() { return matchManager != null ? matchManager : BigBangHubApi.super.matches(); }
     @Override public QueueService queues() { return queues; }
+    @Override public PartyService parties() { return partyService; }
     @Override public RoutingService routing() { return routing.get(); }
     @Override public PlayerTransferService transfers() { return transfers; }
     @Override public void addQueueListener(Consumer<QueueEvent> listener) { queues.addListener(listener); }
@@ -174,5 +185,11 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
     }
     @Override public void removeMatchListener(Consumer<MatchEvent> listener) {
         if (matchManager != null) matchManager.eventBus().remove(listener);
+    }
+    @Override public void addPartyListener(Consumer<PartyEvent> listener) {
+        if (partyEventBus != null) partyEventBus.add(listener);
+    }
+    @Override public void removePartyListener(Consumer<PartyEvent> listener) {
+        if (partyEventBus != null) partyEventBus.remove(listener);
     }
 }

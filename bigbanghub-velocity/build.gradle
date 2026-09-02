@@ -6,6 +6,7 @@ dependencies {
     implementation project(':bigbanghub-common')
     compileOnly "com.velocitypowered:velocity-api:${rootProject.velocityApiVersion}"
     compileOnly 'com.google.inject:guice:7.0.0'
+    testImplementation "com.velocitypowered:velocity-api:${rootProject.velocityApiVersion}"
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junitVersion}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:${rootProject.junitPlatformVersion}"
 }

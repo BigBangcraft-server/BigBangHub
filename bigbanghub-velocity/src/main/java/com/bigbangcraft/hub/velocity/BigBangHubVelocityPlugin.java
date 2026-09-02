@@ -29,6 +29,12 @@ import com.bigbangcraft.hub.api.MatchSnapshot;
 import com.bigbangcraft.hub.api.MatchState;
 import com.bigbangcraft.hub.api.MatchStateChangedEvent;
 import com.bigbangcraft.hub.api.ParticipantRole;
+import com.bigbangcraft.hub.api.PartyEvent;
+import com.bigbangcraft.hub.api.PartyException;
+import com.bigbangcraft.hub.api.PartyId;
+import com.bigbangcraft.hub.api.PartyInvite;
+import com.bigbangcraft.hub.api.PartyService;
+import com.bigbangcraft.hub.api.PartySnapshot;
 import com.bigbangcraft.hub.api.PlayerAdmissionAcceptedEvent;
 import com.bigbangcraft.hub.api.PlayerTransferService;
 import com.bigbangcraft.hub.api.QueueEvent;
@@ -48,12 +54,14 @@ import com.bigbangcraft.hub.common.HubConfigSnapshot;
 import com.bigbangcraft.hub.common.InMemoryGameRegistry;
 import com.bigbangcraft.hub.common.InMemoryInstanceRegistry;
 import com.bigbangcraft.hub.common.InMemoryMatchRegistry;
+import com.bigbangcraft.hub.common.InMemoryPartyService;
 import com.bigbangcraft.hub.common.InMemoryQueueService;
 import com.bigbangcraft.hub.common.InMemoryReservationService;
 import com.bigbangcraft.hub.common.InMemoryServerRegistry;
 import com.bigbangcraft.hub.common.InstanceAwareRoutingService;
 import com.bigbangcraft.hub.common.InstanceEventBus;
 import com.bigbangcraft.hub.common.MatchEventBus;
+import com.bigbangcraft.hub.common.PartyEventBus;
 import com.bigbangcraft.hub.common.MessagePayloads;
 import com.bigbangcraft.hub.common.MessageType;
 import com.bigbangcraft.hub.common.ProtocolCodec;
@@ -79,6 +87,10 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerInfo;
 import com.velocitypowered.api.scheduler.ScheduledTask;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -147,6 +159,8 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private InstanceAwareRoutingService instanceRouting;
     private VelocityTransferService transfers;
     private ScheduledTask livenessTask;
+    private InMemoryPartyService partyService;
+    private PartyEventBus partyEventBus;
 
     @Inject
     public BigBangHubVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -170,6 +184,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("queue").plugin(this).build(),
                     new VelocityCommands(this, true));
+            proxy.getCommandManager().register(
+                    proxy.getCommandManager().metaBuilder("party").aliases("p").plugin(this).build(),
+                    new VelocityPartyCommand(this));
             logger.info("BigBangHub Velocity 0.3.0 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
@@ -187,6 +204,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         if (reservationService != null) reservationService.clear();
         if (instanceRegistry != null) instanceRegistry.clear();
         if (queues != null) queues.clear();
+        if (partyService != null) partyService.clear();
     }
 
     @Subscribe
@@ -194,6 +212,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         UUID playerId = event.getPlayer().getUniqueId();
         lastRequestNanos.remove(playerId);
         inFlightTransfers.remove(playerId);
+        if (partyService != null) partyService.handlePlayerDisconnect(playerId);
         if (queues != null) queues.removePlayer(playerId);
         if (reservationService != null) reservationService.cancel(playerId, "player disconnected");
         if (ticketService != null) ticketService.invalidateForPlayer(playerId);
@@ -207,6 +226,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Subscribe
     public void onServerPostConnect(ServerPostConnectEvent event) {
         Player player = event.getPlayer();
+        if (partyService != null) partyService.handlePlayerReconnect(player.getUniqueId());
         ServerConnection current = player.getCurrentServer().orElse(null);
         if (current == null) return;
         ServerId serverId = ServerId.of(current.getServerInfo().getName());
@@ -785,6 +805,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             ticketService.sweepExpired(now);
             matchRegistry.sweepTombstones(now);
+            if (partyService != null) partyService.sweep();
         } catch (Exception e) {
             logger.error("Error in liveness, reservation, and match sweep", e);
         }
@@ -865,8 +886,176 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             case QUEUE_LEAVE -> handleQueueLeave(connection, player, envelope);
             case QUEUE_STATUS -> handleQueueStatus(connection, player, envelope);
             case SERVER_CONNECT -> handleServerConnect(connection, player, envelope);
+            case PARTY_CREATE -> handlePartyCreate(connection, player, envelope);
+            case PARTY_INVITE -> handlePartyInvite(connection, player, envelope);
+            case PARTY_ACCEPT -> handlePartyAccept(connection, player, envelope);
+            case PARTY_DECLINE -> handlePartyDecline(connection, player, envelope);
+            case PARTY_LEAVE -> handlePartyLeave(connection, player, envelope);
+            case PARTY_KICK -> handlePartyKick(connection, player, envelope);
+            case PARTY_LEADER_CHANGE -> handlePartyLeaderChange(connection, player, envelope);
+            case PARTY_DISBAND -> handlePartyDisband(connection, player, envelope);
             default -> logger.warn("Rejected unexpected request type {}", envelope.messageType());
         }
+    }
+
+    private void handlePartyCreate(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyCreate req = MessagePayloads.partyCreate(envelope.payload());
+            if (!player.getUniqueId().equals(req.leaderId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.createParty(player.getUniqueId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Party criada.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party create payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyInvite(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyInvitePayload req = MessagePayloads.partyInvite(envelope.payload());
+            if (!player.getUniqueId().equals(req.actorId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartyInvite invite = partyService.invitePlayer(player.getUniqueId(), req.targetId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Convite enviado.", Optional.of(invite.partyId()));
+            proxy.getPlayer(req.targetId()).ifPresent(target -> {
+                Component msg = Component.text()
+                        .append(Component.text("§b§m----------------------------------------\n"))
+                        .append(Component.text(player.getUsername(), NamedTextColor.YELLOW, TextDecoration.BOLD))
+                        .append(Component.text(" convidou você para uma Party!\n", NamedTextColor.GRAY))
+                        .append(Component.text(" [ACEITAR] ", NamedTextColor.GREEN, TextDecoration.BOLD)
+                                .clickEvent(ClickEvent.runCommand("/party accept " + player.getUsername()))
+                                .hoverEvent(HoverEvent.showText(Component.text("Clique para aceitar o convite"))))
+                        .append(Component.text(" [RECUSAR] ", NamedTextColor.RED, TextDecoration.BOLD)
+                                .clickEvent(ClickEvent.runCommand("/party decline " + player.getUsername()))
+                                .hoverEvent(HoverEvent.showText(Component.text("Clique para recusar o convite"))))
+                        .append(Component.text("\n§b§m----------------------------------------"))
+                        .build();
+                target.sendMessage(msg);
+            });
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party invite payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyAccept(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyAcceptPayload req = MessagePayloads.partyAccept(envelope.payload());
+            if (!player.getUniqueId().equals(req.playerId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartyId partyId = req.partyId().orElse(null);
+            if (partyId == null) {
+                for (PartySnapshot p : partyService.activeParties()) {
+                    if (p.invitedPlayers().containsKey(player.getUniqueId())) {
+                        partyId = p.partyId();
+                        break;
+                    }
+                }
+            }
+            if (partyId == null) {
+                sendPartyResponse(connection, envelope, player.getUniqueId(), false, "Nenhum convite pendente.", Optional.empty());
+                return;
+            }
+            PartySnapshot party = partyService.acceptInvite(player.getUniqueId(), partyId);
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Entrou na party.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party accept payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyDecline(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyDeclinePayload req = MessagePayloads.partyDecline(envelope.payload());
+            if (!player.getUniqueId().equals(req.playerId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            req.partyId().ifPresent(id -> partyService.declineInvite(player.getUniqueId(), id));
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Convite recusado.", req.partyId());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party decline payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyLeave(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyLeavePayload req = MessagePayloads.partyLeave(envelope.payload());
+            if (!player.getUniqueId().equals(req.playerId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.leaveParty(player.getUniqueId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Saiu da party.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party leave payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyKick(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyKickPayload req = MessagePayloads.partyKick(envelope.payload());
+            if (!player.getUniqueId().equals(req.actorId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.kickPlayer(player.getUniqueId(), req.targetId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Membro expulso.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party kick payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyLeaderChange(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyLeaderChangePayload req = MessagePayloads.partyLeaderChange(envelope.payload());
+            if (!player.getUniqueId().equals(req.actorId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.transferLeadership(player.getUniqueId(), req.newLeaderId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Liderança transferida.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party leader change payload: {}", e.getMessage());
+        }
+    }
+
+    private void handlePartyDisband(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyDisbandPayload req = MessagePayloads.partyDisband(envelope.payload());
+            if (!player.getUniqueId().equals(req.actorId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.disbandParty(player.getUniqueId(), req.partyId());
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true, "Party desfeita.", Optional.of(party.partyId()));
+        } catch (PartyException e) {
+            sendPartyResponse(connection, envelope, player.getUniqueId(), false, e.getMessage(), Optional.empty());
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party disband payload: {}", e.getMessage());
+        }
+    }
+
+    private void sendPartyResponse(ServerConnection connection, ProtocolEnvelope request,
+                                   UUID playerId, boolean success, String message, Optional<PartyId> partyId) {
+        send(connection, new ProtocolEnvelope(1, MessageType.PARTY_RESPONSE, request.correlationId(),
+                MessagePayloads.partyResponse(new MessagePayloads.PartyResponsePayload(playerId, success, message, partyId))));
     }
 
     private void handleQueueJoin(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
@@ -982,6 +1171,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         matchRegistry = new InMemoryMatchRegistry(matchEventBus, snapshot.match().finishedRetention());
         ticketService = new AdmissionTicketService(snapshot.match().admissionTimeout());
         matchManager = new VelocityMatchManager(this, matchRegistry);
+
+        partyEventBus = new PartyEventBus();
+        partyService = new InMemoryPartyService(snapshot.party(), partyEventBus);
 
         games.set(nextGames);
         servers.set(nextServers);
@@ -1121,6 +1313,9 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public Optional<InstanceService> instance() { return Optional.empty(); }
     @Override public MatchManager matches() { return matchManager; }
     @Override public QueueService queues() { return queues; }
+    @Override public PartyService parties() { return partyService; }
+    public InMemoryPartyService partyService() { return partyService; }
+    public ProxyServer proxyServer() { return proxy; }
     @Override public RoutingService routing() { return routing.get(); }
     @Override public PlayerTransferService transfers() { return transfers; }
     @Override public void addQueueListener(Consumer<QueueEvent> listener) { queues.addListener(listener); }
@@ -1129,4 +1324,6 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     @Override public void removeInstanceListener(Consumer<InstanceEvent> listener) { instanceEventBus.remove(listener); }
     @Override public void addMatchListener(Consumer<MatchEvent> listener) { matchEventBus.add(listener); }
     @Override public void removeMatchListener(Consumer<MatchEvent> listener) { matchEventBus.remove(listener); }
+    @Override public void addPartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.add(listener); }
+    @Override public void removePartyListener(Consumer<PartyEvent> listener) { if (partyEventBus != null) partyEventBus.remove(listener); }
 }

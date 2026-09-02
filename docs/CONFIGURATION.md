@@ -47,6 +47,7 @@ match:
   auto-create-match: true  # Se true, cria e abre partidas automaticamente no boot e pós-cleanup
   reconnect-timeout: 60s   # Janela de tolerância para desconexão e recuperação de sessão
   auto-reconnect: true     # Reconecta automaticamente à partida ao reentrar no Hub
+  post-match-timeout: 15s  # Janela de decisão pós-jogo para /playagain e /rematch antes de retorno ao Hub
 
 spectator:
   enabled: true            # Permite o ingresso e transição de jogadores para espectadores

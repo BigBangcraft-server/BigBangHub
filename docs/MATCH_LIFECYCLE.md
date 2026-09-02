@@ -137,3 +137,26 @@ Quando uma partida atinge `FINISHED` ou `ABORTED`:
 ### Expiração e Término da Partida
 - Se o tempo configurado em `reconnect-timeout` expirar antes do retorno do jogador, a rotina periódica de sweep do `InMemoryMatchRegistry` transiciona o jogador para `LEFT`, libera a vaga e dispara `MatchParticipantLeftEvent`.
 - Se a partida terminar (`FINISHED` ou `ABORTED`) antes do retorno, todas as vagas pendentes de reconexão daquela partida são invalidadas imediatamente e tentativas posteriores de `/reconnect` são rejeitadas informando que a partida foi finalizada.
+
+---
+
+## 9. Rematch & Play Again (BigBangHub 0.4.0)
+
+### Fase de Pós-Jogo e Decisão Interativa
+Ao término de uma partida (`FINISHED`), o BigBangHub não desconecta nem retorna imediatamente os jogadores ao lobby. Em vez disso, inicia a fase pós-jogo controlada por `match.post-match-timeout` (padrão: 15s) e envia aos participantes uma mensagem com botões interativos de clique:
+- **`[▶ JOGAR NOVAMENTE]`** (`/playagain` ou `/again`)
+- **`[⚔ REVANCHE]`** (`/rematch` ou `/revanche`)
+
+### Jogar Novamente (`/playagain`)
+- **Jogador Solo**: É imediatamente reinserido na fila do mesmo jogo sem precisar retornar ao Hub ou reabrir menus.
+- **Party**:
+  - Se um membro comum tentar executar, recebe a mensagem: `Apenas o líder da party pode solicitar Jogar Novamente.`
+  - Quando o líder da party executa, a party inteira é re-enfileirada atomicamente e todos os membros recebem confirmação imediata.
+
+### Votação e Consenso de Revanche (`/rematch`)
+- Registra o voto do participante no `RematchService`.
+- A cada voto computado, todos os participantes da partida recebem a atualização: `[Rematch] <Player> votou por revanche! (X/Y)`.
+- Quando o consenso unânime é atingido (todos os participantes votaram a favor), uma nova rodada é iniciada imediatamente ou o grupo é despachado para a próxima instância disponível sem passar pelo lobby.
+
+### Encerramento do Timeout de Decisão
+- Caso o tempo limite de decisão pós-jogo expire antes de um consenso ou sem que o jogador solicite Jogar Novamente, o BigBangHub transfere com segurança os jogadores inativos de volta ao Hub com `ReturnReason.MATCH_FINISHED`.

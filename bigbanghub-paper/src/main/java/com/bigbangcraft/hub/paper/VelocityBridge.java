@@ -42,6 +42,7 @@ final class VelocityBridge implements PluginMessageListener {
                 return;
             }
             try {
+                plugin.getLogger().info("VelocityBridge: Sending request " + type + " correlation " + correlation + " for player " + player.getName());
                 player.sendPluginMessage(plugin, channel,
                         codec.encode(new ProtocolEnvelope(ProtocolCodec.PROTOCOL_VERSION, type, correlation, payload)));
             } catch (RuntimeException exception) {
@@ -114,6 +115,7 @@ final class VelocityBridge implements PluginMessageListener {
         if (!channel.equals(incomingChannel)) return;
         try {
             ProtocolEnvelope envelope = codec.decode(message);
+            plugin.getLogger().info("VelocityBridge: Received " + envelope.messageType() + " correlation " + envelope.correlationId());
             if (envelope.messageType() == MessageType.INSTANCE_REGISTER_ACK) {
                 if (plugin.instanceAgent() != null) {
                     plugin.instanceAgent().onRegisterAck(envelope.payload());
@@ -144,6 +146,7 @@ final class VelocityBridge implements PluginMessageListener {
     }
 
     private void fail(UUID correlation, Throwable error) {
+        plugin.getLogger().warning("VelocityBridge: Request failed " + correlation + ": " + error.getMessage());
         CompletableFuture<ProtocolEnvelope> future = pending.remove(correlation);
         if (future != null) future.completeExceptionally(error);
     }

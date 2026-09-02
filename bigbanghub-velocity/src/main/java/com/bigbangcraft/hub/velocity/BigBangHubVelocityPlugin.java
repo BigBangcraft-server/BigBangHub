@@ -456,7 +456,10 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             if (outcome == InMemoryInstanceRegistry.RegisterOutcome.REPLACED) {
                 // If instance process rebooted, clean up any previous match
-                matchRegistry.reconcileInstanceCrashOrShutdown(reg.instanceId(), null, Instant.now());
+                matchRegistry.findActiveForInstance(reg.instanceId()).ifPresent(m -> {
+                    logger.warn("Instance {} rebooted during active match {}. Reconciling crash.", reg.instanceId(), m.matchId());
+                    matchRegistry.reconcileInstanceCrashOrShutdown(reg.instanceId(), null, Instant.now());
+                });
             }
 
             send(connection, new ProtocolEnvelope(1, MessageType.INSTANCE_REGISTER_ACK, envelope.correlationId(),
@@ -609,7 +612,11 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private void handleAdmissionRequest(ServerConnection connection, ProtocolEnvelope envelope) {
         try {
             MessagePayloads.AdmissionRequest req = MessagePayloads.admissionRequest(envelope.payload());
+            logger.info("Handling ADMISSION_REQUEST from {} for player {} instance {} match {}",
+                    connection.getServerInfo().getName(), req.playerId(), req.instanceId(), req.matchId());
             if (!validateBackendIdentity(connection, req.instanceId(), null)) {
+                logger.warn("Admission rejected: unauthorized backend identity {} for instance {}",
+                        connection.getServerInfo().getName(), req.instanceId());
                 admissionsRejectedCount.incrementAndGet();
                 send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
                         MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(

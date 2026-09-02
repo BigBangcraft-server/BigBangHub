@@ -67,3 +67,35 @@ Operações que interferem no estado de partidas em produção geram logs de aud
    - Cooldown obrigatório entre convites enviados (`invite-cooldown`, padrão 5s) prevenindo flood de convites para jogadores na rede.
 4. **Proteção Contra Mutação em Estados Travados**:
    - Quando a party está em `QUEUED`, `ASSIGNED` ou `IN_MATCH`, mutações como convites, expulsões e saídas desordenadas são rejeitadas com `PARTY_MUTATION_LOCKED`.
+
+---
+
+## 7. Sanitização de Nomes e Anti-Spoofing de Identidade
+
+1. **Sanitização de Nomes de Jogadores**:
+   - Todos os comandos de party e matchmaking validam rigorosamente nomes de jogadores com a expressão regular `^[a-zA-Z0-9_]{3,16}$`.
+   - Nomes contendo caracteres especiais, injeções de quebra de linha ou sequências de escape são bloqueados imediatamente antes de qualquer busca em memória.
+2. **Anti-Spoofing em Pacotes de Rede**:
+   - Todo envelope de protocolo que transporta ações de jogador (`PARTY_INVITE`, `PARTY_ACCEPT`, `PARTY_DECLINE`, `PARTY_LEAVE`, `PARTY_KICK`, `PARTY_LEADER`, `PARTY_DISBAND`, `PARTY_WARP`, `QUEUE_JOIN`, `QUEUE_LEAVE`) valida se o `playerId` informado corresponde estritamente à identidade do jogador conectado na conexão subjacente (`player.getUniqueId()`).
+   - Tentativas de spoofing resultam em descarte imediato (`rejectIdentity`) e bloqueio da operação.
+
+---
+
+## 8. Degradação Graciosa e Resiliência a Falhas de Backend
+
+1. **Recuperação Automática de Quedas de Instâncias**:
+   - Quando uma instância de minigame reporta `InstanceHealth.UNAVAILABLE` ou o processo desconecta/cai (`handleInstanceCrash`):
+     - A partida associada é abortada imediatamente no `InMemoryMatchRegistry`.
+     - Todos os jogadores e parties vinculadas à partida têm seu estado desbloqueado para `IDLE`, impedindo que fiquem travados indefinidamente em `IN_MATCH`.
+     - Notificações amigáveis são enviadas aos membros conectados informando o retorno ao estado livre no Hub.
+2. **Evento de Expulsão do Backend (`onKickedFromServer`)**:
+   - Se o jogador for desconectado abruptamente de um backend, seus tickets e reservas são invalidados e a party é destravada para `IDLE`.
+
+---
+
+## 9. Proteção de Ingressos Diretos sem Ticket no Backend
+
+1. **Redirecionamento ao Hub**:
+   - Jogadores que tentarem entrar diretamente em um servidor de minigame via comando de admin, manipulação de BungeeCord ou bug de roteamento sem um `AdmissionTicket` válido são rejeitados na admissão e enviados de volta ao Hub (`hubminigame`).
+2. **Fallback Kick de Segurança**:
+   - Se a transferência de retorno ao Hub falhar (por proxy offline ou saturação de rede), o jogador é imediatamente expulso do servidor Paper (`player.kick(...)`) para garantir que nenhum jogador não autorizado permaneça no backend.

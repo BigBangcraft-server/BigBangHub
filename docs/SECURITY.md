@@ -52,3 +52,18 @@ Operações que interferem no estado de partidas em produção geram logs de aud
 - **Rate Limiting por Jogador**: Máximo de 1 requisição a cada 100 ms.
 - **Rate Limiting por Backend**: Máximo de 50 mensagens por segundo por servidor backend.
 - **HMAC-SHA256**: Envelopes binários `BBH1` assinados quando `BIGBANGHUB_MESSAGE_SECRET` estiver configurado, com verificação em tempo constante (`MessageDigest.isEqual`) contra timing attacks.
+
+---
+
+## 6. Segurança e Invariantes de Party
+
+1. **Invariante 1 Jogador <= 1 Party**:
+   - Mapeamento atômico garantido via lock reentrante em memória.
+   - Disputa concorrente de convites (ex: 100 parties aceitando o mesmo jogador simultaneamente) garante que exatamente 1 tenha sucesso e 99 recebam `PLAYER_ALREADY_IN_PARTY`.
+2. **Convites de Uso Único e TTL Restrito**:
+   - `PartyInvite` possui expiração obrigatória (`invite-ttl`, padrão 60s).
+   - Ao aceitar um convite, todos os demais convites direcionados ao jogador em outras parties são instantaneamente descartados para evitar replays ou corrupção de estado.
+3. **Anti-Spam de Convites**:
+   - Cooldown obrigatório entre convites enviados (`invite-cooldown`, padrão 5s) prevenindo flood de convites para jogadores na rede.
+4. **Proteção Contra Mutação em Estados Travados**:
+   - Quando a party está em `QUEUED`, `ASSIGNED` ou `IN_MATCH`, mutações como convites, expulsões e saídas desordenadas são rejeitadas com `PARTY_MUTATION_LOCKED`.

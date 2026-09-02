@@ -3,6 +3,7 @@
 ```text
 Player
   -> Velocity 4.1.1 + BigBangHub Velocity
+       ├── InMemoryPartyService (Parties, Leaders, Members, Invites, TTLs)
        ├── InMemoryMatchRegistry (MatchSessions, Revisions, Capacities, History)
        ├── AdmissionTicketService (Single-use Tickets, Nonces, Expiry)
        ├── InMemoryInstanceRegistry (Instances, Health, Sessions)
@@ -20,14 +21,17 @@ Player
 
 ## 1. Módulos e Responsabilidades
 
-- **`bigbanghub-api`**: Contratos puros e imutáveis de partidas e instâncias:
+- **`bigbanghub-api`**: Contratos puros e imutáveis de partidas, instâncias e parties:
   - `MatchManager`, `MatchHandle`, `MatchDefinition`, `MatchSnapshot`, `MatchId`.
+  - `PartyService`, `PartyId`, `PartyRole`, `PartyState`, `PartyMember`, `PartyInvite`, `PartySnapshot`.
   - `MatchState` (`CREATED`, `WAITING`, `COUNTDOWN`, `LOCKED`, `IN_GAME`, `ENDING`, `FINISHED`, `ABORTED`).
   - `ParticipantRole` (`PLAYER`, `SPECTATOR`) e `ParticipantState` (`RESERVED`, `ADMITTED`, `ACTIVE`, `ELIMINATED`, `SPECTATING`, `LEAVING`, `LEFT`, `DISCONNECTED`).
   - `AdmissionTicket`, `MatchResult`, `ReturnReason`, `DisconnectPolicy`.
-  - Eventos de partidas (`MatchCreatedEvent`, `MatchStateChangedEvent`, `PlayerAdmissionAcceptedEvent`, `PlayerEliminatedEvent`, `MatchFinishedEvent`, etc.).
+  - Eventos de partidas e parties (`PartyCreatedEvent`, `PartyMemberJoinedEvent`, `PartyLeaderChangedEvent`, etc.).
   - Livre de dependências externas.
 - **`bigbanghub-common`**: Implementações centrais desacopladas de Minecraft:
+  - `InMemoryPartyService`: Serviço autoritativo de parties em memória, garantindo 1 player <= 1 party, single-use invites, sweep de expiração e tolerância a desconexão do líder.
+  - `PartyEventBus`: Barramento concorrente e isolado de eventos de party.
   - `InMemoryMatchRegistry`: Registro em memória de partidas ativas, controle de capacidade efetiva, proteção contra replay, retenção de tombstones e handshake de limpeza (`markInstanceReady`).
   - `MatchStateMachine`: Máquina de estados thread-safe com proteção CAS e controle monotônico de revisões (`revision`).
   - `AdmissionTicketService`: Emissor e validador de ingressos de uso único com TTL para prevenção de conexões diretas.

@@ -96,3 +96,35 @@ Listeners são registrados via `hub.addMatchListener(Consumer<MatchEvent>)`:
 - `PlayerEliminatedEvent`: Jogador foi eliminado do minigame.
 - `MatchFinishedEvent`: Partida finalizada com resultado.
 - `MatchAbortedEvent`: Partida abortada.
+
+---
+
+## 5. Contratos de Party (`PartyService` e `BigBangHubApi.parties()`)
+
+Disponível através de `hub.parties()`:
+- `createParty(leaderId)`: Cria uma nova party com o líder especificado.
+- `disbandParty(actorId, partyId)`: Desfaz a party (somente pelo líder ou sistema).
+- `invitePlayer(actorId, targetId)`: Envia convite com TTL delimitado.
+- `acceptInvite(playerId, partyId)`: Aceita convite e adiciona jogador, invalidando outros convites pendentes.
+- `declineInvite(playerId, partyId)`: Recusa convite pendente.
+- `leaveParty(playerId)`: Remove membro da party; transfere liderança se o líder sair ou desfaz se for o último.
+- `kickPlayer(actorId, targetId)`: Expulsa membro da party.
+- `transferLeadership(actorId, newLeaderId)`: Transfere liderança para outro membro.
+- `partyOf(playerId)` / `party(partyId)` / `members(partyId)`: Consultas em tempo constante.
+- `transitionState(partyId, newState)`: Atualiza estado da party no ciclo de matchmaking.
+
+### Tipos e Eventos de Party:
+- `PartyId`: Identificador único da party (UUID independente do líder).
+- `PartyRole`: `LEADER`, `MEMBER`.
+- `PartyState`: `IDLE`, `QUEUED`, `ASSIGNED`, `IN_MATCH`, `DISBANDING`.
+- `PartySnapshot`: Snapshot imutável da party com revisão monotônica.
+- `PartyInvite`: Convite bounded com TTL e target.
+- Eventos (`hub.addPartyListener(Consumer<PartyEvent>)`):
+  - `PartyCreatedEvent`
+  - `PartyDisbandedEvent`
+  - `PartyMemberJoinedEvent`
+  - `PartyMemberLeftEvent`
+  - `PartyLeaderChangedEvent`
+  - `PartyStateChangedEvent`
+  - `PartyInviteCreatedEvent`
+  - `PartyInviteExpiredEvent`

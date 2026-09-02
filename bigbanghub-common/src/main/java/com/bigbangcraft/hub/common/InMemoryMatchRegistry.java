@@ -279,7 +279,7 @@ public final class InMemoryMatchRegistry {
             throw new MatchException(MatchException.ErrorCode.STALE_REVISION, "Instance sessionId mismatch");
         }
 
-        if (session.stateMachine().revision() < expectedRevision) {
+        if (session.stateMachine().revision() != expectedRevision) {
             return false;
         }
 
@@ -377,10 +377,6 @@ public final class InMemoryMatchRegistry {
         MatchSessionState session = matches.get(matchId);
         if (session == null) return false;
 
-        if (session.stateMachine().state() == MatchState.FINISHED) {
-            return true; // idempotent
-        }
-
         if (instanceSessionId != null && !session.instanceSessionId().equals(instanceSessionId)) {
             throw new MatchException(MatchException.ErrorCode.STALE_REVISION, "Instance sessionId mismatch on finish");
         }
@@ -422,10 +418,6 @@ public final class InMemoryMatchRegistry {
 
         MatchSessionState session = matches.get(matchId);
         if (session == null) return false;
-
-        if (session.stateMachine().state() == MatchState.ABORTED) {
-            return true; // idempotent
-        }
 
         if (session.stateMachine().isTerminal()) {
             return false;

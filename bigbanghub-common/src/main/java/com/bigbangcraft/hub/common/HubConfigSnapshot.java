@@ -14,6 +14,8 @@ public record HubConfigSnapshot(
         ServerRole role,
         Optional<InstanceAgentSettings> instance,
         RegistrySettings registry,
+        MatchSettings match,
+        SpectatorSettings spectator,
         List<GameDefinition> games,
         List<ServerDefinition> servers,
         CompassMenu compass,
@@ -29,6 +31,8 @@ public record HubConfigSnapshot(
         role = Objects.requireNonNull(role, "role");
         instance = Objects.requireNonNull(instance, "instance");
         registry = Objects.requireNonNull(registry, "registry");
+        match = Objects.requireNonNull(match, "match");
+        spectator = Objects.requireNonNull(spectator, "spectator");
         games = List.copyOf(games);
         servers = List.copyOf(servers);
         aliases = Map.copyOf(aliases);

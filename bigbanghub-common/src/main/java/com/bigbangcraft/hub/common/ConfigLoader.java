@@ -42,10 +42,14 @@ public final class ConfigLoader {
             ServerRole role = readRole(config);
             Optional<InstanceAgentSettings> instance = readInstance(config);
             RegistrySettings registry = readRegistry(config);
+            MatchSettings match = readMatch(config);
+            SpectatorSettings spectator = readSpectator(config);
             return new HubConfigSnapshot(
                     role,
                     instance,
                     registry,
+                    match,
+                    spectator,
                     gameDefinitions,
                     serverDefinitions,
                     compass,
@@ -379,6 +383,25 @@ public final class ConfigLoader {
         } catch (IllegalArgumentException exception) {
             throw new ConfigException("Invalid registry configuration: " + exception.getMessage(), exception);
         }
+    }
+
+    private static MatchSettings readMatch(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> match = optionalMap(root.get("match"));
+        Duration admissionTimeout = duration(match, "admission-timeout", Duration.ofSeconds(10), "match.admission-timeout");
+        Duration returnTimeout = duration(match, "return-timeout", Duration.ofSeconds(10), "match.return-timeout");
+        Duration finishedRetention = duration(match, "finished-retention", Duration.ofSeconds(60), "match.finished-retention");
+        boolean autoCreate = bool(match, "auto-create-match", true);
+        try {
+            return new MatchSettings(admissionTimeout, returnTimeout, finishedRetention, autoCreate);
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException("Invalid match configuration: " + exception.getMessage(), exception);
+        }
+    }
+
+    private static SpectatorSettings readSpectator(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> spectator = optionalMap(root.get("spectator"));
+        boolean enabled = bool(spectator, "enabled", true);
+        return new SpectatorSettings(enabled);
     }
 
     private static Duration duration(Map<String, Object> map, String key, Duration fallback, String path) throws ConfigException {

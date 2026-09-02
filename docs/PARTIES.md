@@ -172,3 +172,68 @@ Erros de operação lançam `PartyException` contendo `ErrorCode`:
 - `INVALID_PARTY_STATE`
 - `PARTY_MUTATION_LOCKED`
 - `RATE_LIMITED`
+
+---
+
+## 7. Comandos e Permissões (`/party`, `/p`)
+
+O sistema fornece comandos universais registrados tanto no Proxy Velocity quanto nos servidores Paper. Quando o jogador está conectado à rede, os comandos são executados com autoridade primária no Velocity.
+
+### Subcomandos Disponíveis
+
+| Comando | Descrição | Permissão Padrão |
+| :--- | :--- | :--- |
+| `/party` ou `/p` | Exibe o status da party atual (Líder, jogadores e estado). | `bigbanghub.party.use` (true) |
+| `/party invite <jogador>` | Convida um jogador. Cria a party automaticamente se o líder ainda não possuir uma. | `bigbanghub.party.invite` (true) |
+| `/party accept [jogador\|partyId]` | Aceita o convite pendente. Se omitido, aceita o convite pendente mais recente. | `bigbanghub.party.use` (true) |
+| `/party decline [jogador\|partyId]` | Recusa um convite pendente de party. | `bigbanghub.party.use` (true) |
+| `/party leave` | Sai voluntariamente da party atual. | `bigbanghub.party.use` (true) |
+| `/party kick <jogador>` | Expulsa um membro do grupo (apenas líder). | `bigbanghub.party.invite` (true) |
+| `/party leader <jogador>` | Transfere a liderança do grupo para outro membro (apenas líder). | `bigbanghub.party.invite` (true) |
+| `/party disband` | Desfaz a party completamente (apenas líder). | `bigbanghub.party.invite` (true) |
+| `/party list` | Lista todos os membros atuais e seus respectivos papéis. | `bigbanghub.party.use` (true) |
+
+### Notificações e Componentes Adventure Clicáveis
+
+Ao convidar um jogador, o destinatário recebe uma mensagem interativa via Adventure:
+
+```text
+§b§m----------------------------------------
+§ePedro §7convidou você para uma Party!
+ [ACEITAR]  [RECUSAR]
+§b§m----------------------------------------
+```
+
+- **`[ACEITAR]`**: Botão verde em negrito com `ClickEvent.runCommand("/party accept Pedro")` e hover text descritivo.
+- **`[RECUSAR]`**: Botão vermelho em negrito com `ClickEvent.runCommand("/party decline Pedro")` e hover text descritivo.
+- Nenhuma string fornecida pelo usuário é executada como comando arbitrário; o payload é sanitizado e validado pelo protocolo do BigBangHub.
+
+---
+
+## 8. Sincronização Cross-Server e Mensageria
+
+A integridade do grupo independe do servidor Paper onde os jogadores estão situados. Se um líder estiver no Hub e convidar um jogador em um minigame, a party é mantida no Proxy Velocity e sincronizada de ponta a ponta.
+
+### Mensagens de Protocolo `BBH1` (`bigbanghub:main`)
+
+| Código | Tipo | Descrição |
+| :---: | :--- | :--- |
+| `24` | `PARTY_CREATE` | Criação de party iniciada pelo cliente Paper. |
+| `25` | `PARTY_INVITE` | Envio de convite para outro jogador. |
+| `26` | `PARTY_ACCEPT` | Aceite de convite pendente. |
+| `27` | `PARTY_DECLINE` | Recusa de convite pendente. |
+| `28` | `PARTY_LEAVE` | Saída voluntária do jogador. |
+| `29` | `PARTY_KICK` | Expulsão de membro pelo líder. |
+| `30` | `PARTY_LEADER_CHANGE` | Transferência de liderança de party. |
+| `31` | `PARTY_DISBAND` | Desmanche da party pelo líder. |
+| `32` | `PARTY_SYNC` | Sincronização do estado e membros da party. |
+| `33` | `PARTY_RESPONSE` | Resposta com status, mensagem amigável e `PartyId`. |
+
+---
+
+## 9. Proteções e Segurança
+
+1. **Anti-Spam de Convites**: Cooldown temporal configurável (`party.invite-cooldown`, padrão de 5s) por jogador para prevenir flood de convites a outros usuários.
+2. **Rejeição de Falsa Identidade**: Requisições de plugin messaging onde o UUID do cabeçalho diverge do UUID do jogador na conexão de rede são rejeitadas com erro de segurança.
+3. **Imutabilidade em Fila e Partida**: Quando uma party está em estado `QUEUED`, `ASSIGNED` ou `IN_MATCH`, modificações estruturais (convidar, expulsar, transferir líder, sair) são rejeitadas com `PARTY_MUTATION_LOCKED`.
+4. **Varredura Periódica Centralizada**: A limpeza de convites expirados e lideranças abandonadas é executada na tarefa de sweep periódica do proxy, sem introduzir threads ou timers por jogador.

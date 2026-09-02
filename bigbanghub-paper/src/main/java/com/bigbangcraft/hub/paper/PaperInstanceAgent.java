@@ -114,6 +114,9 @@ public final class PaperInstanceAgent implements InstanceService {
                     registered.set(true);
                     plugin.getLogger().info("Successfully registered runtime instance with Velocity ("
                             + settings.instanceId() + ")");
+                    if (plugin.matchManager() != null && plugin.configSnapshot().match().autoCreateMatch()) {
+                        plugin.matchManager().autoCreateAndOpen();
+                    }
                 } else {
                     plugin.getLogger().warning("Registration rejected by Velocity: " + ack.message());
                 }

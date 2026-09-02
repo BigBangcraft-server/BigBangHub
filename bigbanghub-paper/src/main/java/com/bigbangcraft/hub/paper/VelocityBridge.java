@@ -55,6 +55,30 @@ final class VelocityBridge implements PluginMessageListener {
         return future;
     }
 
+    CompletionStage<ProtocolEnvelope> requestAny(MessageType type, byte[] payload) {
+        UUID correlation = UUID.randomUUID();
+        CompletableFuture<ProtocolEnvelope> future = new CompletableFuture<>();
+        pending.put(correlation, future);
+        Runnable send = () -> {
+            Player player = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+            if (player == null || !player.isOnline()) {
+                fail(correlation, new IllegalStateException("No players online to send plugin message"));
+                return;
+            }
+            try {
+                player.sendPluginMessage(plugin, channel,
+                        codec.encode(new ProtocolEnvelope(ProtocolCodec.PROTOCOL_VERSION, type, correlation, payload)));
+            } catch (RuntimeException exception) {
+                fail(correlation, exception);
+            }
+        };
+        if (Bukkit.isPrimaryThread()) send.run();
+        else Bukkit.getScheduler().runTask(plugin, send);
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> fail(correlation, new IllegalStateException("Velocity request timed out")), REQUEST_TIMEOUT_TICKS);
+        return future;
+    }
+
     void sendAny(MessageType type, byte[] payload) {
         Runnable send = () -> {
             Player player = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
@@ -81,10 +105,17 @@ final class VelocityBridge implements PluginMessageListener {
                 }
                 return;
             }
-            if (envelope.messageType() != MessageType.QUEUE_RESPONSE
-                    && envelope.messageType() != MessageType.SERVER_RESPONSE) return;
+
             CompletableFuture<ProtocolEnvelope> future = pending.remove(envelope.correlationId());
-            if (future != null) future.complete(envelope);
+            if (future != null) {
+                future.complete(envelope);
+                return;
+            }
+
+            // Uncorrelated or broadcast messages
+            if (envelope.messageType() == MessageType.PLAYER_RETURN) {
+                // Handled directly if needed
+            }
         } catch (ProtocolValidationException exception) {
             plugin.getLogger().warning("Rejected invalid proxy message: " + exception.getMessage());
         }

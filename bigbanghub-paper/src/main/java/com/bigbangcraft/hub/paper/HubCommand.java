@@ -16,7 +16,7 @@ final class HubCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String sub = args.length == 0 ? "version" : args[0].toLowerCase(java.util.Locale.ROOT);
         switch (sub) {
-            case "version" -> sender.sendMessage("§bBigBangHub §f0.2.0 §7(Paper 26.2)");
+            case "version" -> sender.sendMessage("§bBigBangHub §f0.3.0 §7(Paper 26.2)");
             case "compass" -> {
                 if (!sender.hasPermission("bigbanghub.compass")) return deny(sender);
                 if (!(sender instanceof org.bukkit.entity.Player player)) {

@@ -4,4 +4,8 @@ import java.util.Optional;
 
 public interface RoutingService {
     Optional<ServerDefinition> select(GameId gameId);
+
+    default Optional<InstanceSnapshot> selectInstance(GameId gameId) {
+        return Optional.empty();
+    }
 }

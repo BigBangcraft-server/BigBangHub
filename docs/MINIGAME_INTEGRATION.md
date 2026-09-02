@@ -203,3 +203,24 @@ O BigBangHub protege automaticamente seus servidores de minigame contra entradas
 ## 6. Modo Auto-Create-Match
 
 Caso o servidor opere no modo `auto-create-match: true` (padrão no `config.yml`), o BigBangHub cria e abre automaticamente a primeira sessão de partida assim que o agente se registra com sucesso no proxy Velocity, e recria uma nova partida após cada `markReady()`.
+
+---
+
+## 7. Integração com Parties e Coesão de Equipes (BigBangHub 0.4.0)
+
+A partir da versão 0.4.0, o BigBangHub transporta automaticamente a associação de grupo (`PartyId`) dos jogadores até o backend Paper:
+
+```java
+// Descobrir se um jogador pertence a uma party
+Optional<PartyId> partyId = participant.partyId();
+
+// Obter todos os membros de uma mesma party presentes na partida:
+if (partyId.isPresent()) {
+    Collection<MatchParticipant> teammates = currentMatch.participantsOfParty(partyId.get());
+    // Aloque todos no mesmo time/esquadrão automaticamente!
+}
+```
+
+Invariantes de Coesão:
+- O vínculo de party permanece estritamente preservado durante transições de eliminação (`ELIMINATED`) ou espectador (`SPECTATING`).
+- Ao término da partida via `finish(result)`, os membros da party retornam ao Hub de forma coordenada, preservando o grupo com estado revertido para `IDLE`.

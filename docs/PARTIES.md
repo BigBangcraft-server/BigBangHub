@@ -228,6 +228,7 @@ A integridade do grupo independe do servidor Paper onde os jogadores estão situ
 | `31` | `PARTY_DISBAND` | Desmanche da party pelo líder. |
 | `32` | `PARTY_SYNC` | Sincronização do estado e membros da party. |
 | `33` | `PARTY_RESPONSE` | Resposta com status, mensagem amigável e `PartyId`. |
+| `34` | `PARTY_WARP` | Comando do líder para puxar membros da party ao seu servidor atual. |
 
 ---
 
@@ -255,3 +256,24 @@ O BigBangHub 0.4.0 garante coesão social absoluta em partidas multiplayer atrav
 2. **Reserva All-or-Nothing e Rollback**: A reserva de capacidade no servidor de destino é estritamente atômica. Se qualquer membro do grupo falhar ao reservar slot (por timeout ou contenção concorrente), **todas as reservas já feitas para aquela party são canceladas imediatamente**.
 3. **Tickets e Encaminhamento Unificado**: Todos os membros recebem `AdmissionTicket` válidos apontando para o mesmo `matchId` e `instanceId`. O grupo transita de `QUEUED` para `ASSIGNED` e todos os membros iniciam a transferência de rede em paralelo.
 4. **Transição para Partida**: À medida que os membros são validados e admitidos pelo backend, a party transita para `IN_MATCH`. No encerramento da partida ou retorno ao Hub, a party retorna automaticamente para `IDLE` preservando seus membros.
+
+---
+
+## 11. Admissão de Party, Coesão de Partida e Party Warp
+
+O BigBangHub 0.4.0 estende a camada de admissão e ciclo de vida de partidas para sustentar coesão de grupos no runtime Paper:
+
+### Coesão de Partida (`AdmissionTicket` & `MatchParticipant`)
+1. **Propagação de `PartyId`**: Durante o matchmaking atômico, o proxy Velocity carimba o `PartyId` do grupo diretamente nos `AdmissionTicket` individuais de todos os membros.
+2. **Admissão Segura no Paper**: Ao receber o `ADMISSION_REQUEST`, o Velocity valida o ticket e retorna o `AdmissionResponse` com o `PartyId`. O Paper instancia o `MatchParticipant` contendo o vínculo do grupo (`participant.partyId()`).
+3. **Consulta de Coesão Local via API**: Plugins de minigames e sistemas de pontuação consultam diretamente `matchHandle.participantsOfParty(partyId)` para recuperar todos os jogadores do mesmo grupo em jogo.
+4. **Preservação de Vínculo em Transições de Estado**: Quando um jogador é eliminado (`ELIMINATED`) ou vira espectador (`SPECTATING`), seu vínculo com a party é estritamente preservado no `MatchParticipant`.
+5. **Retorno Seguro ao Hub (`safeReturnPlayerToHub`)**: Ao término da partida ou eliminação, os jogadores retornam ao Hub de forma coordenada; o estado da party no proxy retorna para `IDLE` mantendo todos os membros agrupados.
+
+### Party Warp (`/party warp`)
+1. **Comando para Líder**: Quando a party está em estado `IDLE`, o líder pode utilizar `/party warp` para puxar todos os membros conectados para o seu servidor atual.
+2. **Validações Estritas**:
+   - Membros comuns não podem puxar o grupo (`Apenas o líder pode puxar a party.`).
+   - Não é permitido executar warp quando o grupo está em `QUEUED`, `ASSIGNED` ou `IN_MATCH`.
+   - Jogadores já conectados no servidor do líder não são reconectados redundante ou desnecessariamente.
+3. **Comunicação Bidirecional (`PARTY_WARP = 34`)**: O comando pode ser executado tanto diretamente no Proxy Velocity quanto em servidores Paper locais através do pacote de rede `PARTY_WARP`.

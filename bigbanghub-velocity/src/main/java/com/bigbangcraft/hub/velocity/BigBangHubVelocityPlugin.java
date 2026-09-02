@@ -392,6 +392,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     public void onPluginMessage(PluginMessageEvent event) {
         if (channel == null || !channel.equals(event.getIdentifier())) return;
         event.setResult(PluginMessageEvent.ForwardResult.handled());
+        logger.info("PluginMessage received: id={} source={}", event.getIdentifier(), event.getSource());
         if (!(event.getSource() instanceof ServerConnection connection)) return;
         String backendName = connection.getServerInfo().getName();
         if (!backendRateAllowed(backendName)) return;
@@ -399,6 +400,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         HubConfigSnapshot snapshot = configSnapshot();
         try {
             ProtocolEnvelope envelope = codec.decode(event.getData());
+            logger.info("PluginMessage decoded: type={} from={}", envelope.messageType(), backendName);
             switch (envelope.messageType()) {
                 case INSTANCE_REGISTER -> handleInstanceRegister(connection, envelope);
                 case INSTANCE_HEARTBEAT -> handleInstanceHeartbeat(connection, envelope);

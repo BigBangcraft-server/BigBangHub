@@ -1777,10 +1777,22 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 } catch (RuntimeException exception) {
                     if (failOnMismatch) throw new ConfigException("Unable to register server " + server.id(), exception);
                 }
-            } else if (!existing.getServerInfo().getAddress().equals(info.getAddress()) && failOnMismatch) {
+            } else if (!sameAddress(existing.getServerInfo().getAddress(), info.getAddress()) && failOnMismatch) {
                 throw new ConfigException("Configured address differs from existing Velocity server " + server.id());
             }
         }
+    }
+
+    static boolean sameAddress(InetSocketAddress a, InetSocketAddress b) {
+        if (a == null || b == null) return a == b;
+        if (a.getPort() != b.getPort()) return false;
+        if (a.equals(b)) return true;
+        if (a.getAddress() != null && b.getAddress() != null) {
+            return a.getAddress().equals(b.getAddress());
+        }
+        String hostA = a.getAddress() != null ? a.getAddress().getHostAddress() : a.getHostString();
+        String hostB = b.getAddress() != null ? b.getAddress().getHostAddress() : b.getHostString();
+        return hostA.equalsIgnoreCase(hostB);
     }
 
     private void ensureDefaults() throws IOException {

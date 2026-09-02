@@ -27,7 +27,7 @@ final class VelocityCommands implements SimpleCommand {
         String[] args = invocation.arguments();
         String sub = args.length == 0 ? "version" : args[0].toLowerCase(java.util.Locale.ROOT);
         if (sub.equals("version")) {
-            invocation.source().sendPlainMessage("BigBangHub 0.1.0 (Velocity 4.1.1)");
+            invocation.source().sendPlainMessage("BigBangHub 0.2.0 (Velocity 4.1.1)");
         } else if (sub.equals("reload")) {
             if (!admin(invocation.source(), "bigbanghub.reload")) return;
             plugin.reload(invocation.source());
@@ -76,7 +76,7 @@ final class VelocityCommands implements SimpleCommand {
     }
 
     private void status(CommandSource source) {
-        source.sendPlainMessage("BigBangHub 0.1.0 | Protocol " + plugin.configSnapshot().proxy().protocolVersion());
+        source.sendPlainMessage("BigBangHub 0.2.0 | Protocol " + plugin.configSnapshot().proxy().protocolVersion());
         source.sendPlainMessage("Games: " + plugin.games().games().size() + " | Players online: " + plugin.proxy().getPlayerCount());
         for (ServerDefinition server : plugin.servers().servers()) {
             source.sendPlainMessage("- " + server.id() + " " + server.state() + " " + server.playerCount() + "/" + server.maxPlayers());

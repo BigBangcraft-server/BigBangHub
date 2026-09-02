@@ -16,7 +16,7 @@ final class HubCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String sub = args.length == 0 ? "version" : args[0].toLowerCase(java.util.Locale.ROOT);
         switch (sub) {
-            case "version" -> sender.sendMessage("§bBigBangHub §f0.1.0 §7(Paper 26.2)");
+            case "version" -> sender.sendMessage("§bBigBangHub §f0.2.0 §7(Paper 26.2)");
             case "compass" -> {
                 if (!sender.hasPermission("bigbanghub.compass")) return deny(sender);
                 if (!(sender instanceof org.bukkit.entity.Player player)) {
@@ -26,12 +26,15 @@ final class HubCommand implements CommandExecutor, TabCompleter {
                 plugin.menu().open(player);
             }
             case "reload" -> {
-                if (!sender.hasPermission("bigbanghub.reload")) return deny(sender);
+                if (!sender.hasPermission("bigbanghub.reload")) {
+                    sender.sendMessage("§cVocê não tem permissão para isto.");
+                    return true;
+                }
                 plugin.reload(sender);
             }
             case "status" -> {
                 if (!sender.hasPermission("bigbanghub.admin")) return deny(sender);
-                sender.sendMessage("§bBigBangHub §f0.1.0");
+                sender.sendMessage("§bBigBangHub §f0.2.0");
                 sender.sendMessage("§7Paper bridge: §aONLINE §7| Protocol: §f" + plugin.configSnapshot().proxy().protocolVersion());
                 sender.sendMessage("§7Games: §f" + plugin.games().games().size() + " §7| Queued players: §funknown (proxy-owned)");
             }

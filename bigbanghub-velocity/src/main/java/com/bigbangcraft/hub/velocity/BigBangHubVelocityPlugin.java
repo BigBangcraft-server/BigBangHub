@@ -54,7 +54,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.1.0", authors = {"BigBangCraft"})
+@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.2.0", authors = {"BigBangCraft"})
 public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final ProxyServer proxy;
     private final Logger logger;

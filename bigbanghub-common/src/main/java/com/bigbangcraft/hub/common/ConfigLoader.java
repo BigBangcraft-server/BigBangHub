@@ -44,12 +44,14 @@ public final class ConfigLoader {
             RegistrySettings registry = readRegistry(config);
             MatchSettings match = readMatch(config);
             SpectatorSettings spectator = readSpectator(config);
+            PartySettings party = readParty(config);
             return new HubConfigSnapshot(
                     role,
                     instance,
                     registry,
                     match,
                     spectator,
+                    party,
                     gameDefinitions,
                     serverDefinitions,
                     compass,
@@ -402,6 +404,19 @@ public final class ConfigLoader {
         Map<String, Object> spectator = optionalMap(root.get("spectator"));
         boolean enabled = bool(spectator, "enabled", true);
         return new SpectatorSettings(enabled);
+    }
+
+    private static PartySettings readParty(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> party = optionalMap(root.get("party"));
+        int maxSize = integer(party, "max-size", 8, "party.max-size");
+        Duration inviteTtl = duration(party, "invite-ttl", Duration.ofSeconds(60), "party.invite-ttl");
+        Duration leaderGrace = duration(party, "leader-disconnect-grace", Duration.ofSeconds(30), "party.leader-disconnect-grace");
+        Duration inviteCooldown = duration(party, "invite-cooldown", Duration.ofSeconds(5), "party.invite-cooldown");
+        try {
+            return new PartySettings(maxSize, inviteTtl, leaderGrace, inviteCooldown);
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException("Invalid party configuration: " + exception.getMessage(), exception);
+        }
     }
 
     private static Duration duration(Map<String, Object> map, String key, Duration fallback, String path) throws ConfigException {

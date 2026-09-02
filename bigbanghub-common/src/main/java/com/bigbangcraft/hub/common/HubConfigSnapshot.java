@@ -16,6 +16,7 @@ public record HubConfigSnapshot(
         RegistrySettings registry,
         MatchSettings match,
         SpectatorSettings spectator,
+        PartySettings party,
         List<GameDefinition> games,
         List<ServerDefinition> servers,
         CompassMenu compass,
@@ -33,6 +34,7 @@ public record HubConfigSnapshot(
         registry = Objects.requireNonNull(registry, "registry");
         match = Objects.requireNonNull(match, "match");
         spectator = Objects.requireNonNull(spectator, "spectator");
+        party = Objects.requireNonNull(party, "party");
         games = List.copyOf(games);
         servers = List.copyOf(servers);
         aliases = Map.copyOf(aliases);

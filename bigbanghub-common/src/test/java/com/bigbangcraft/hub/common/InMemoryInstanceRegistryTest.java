@@ -144,4 +144,25 @@ class InMemoryInstanceRegistryTest {
         assertFalse(snapshot.acceptingPlayers());
         assertEquals(0, snapshot.activeReservations());
     }
+
+    @Test
+    void testUpdateLivenessRecoversHealthAndUpdatesTimestamp() {
+        ServerId id = ServerId.of("campominado-01");
+        GameId game = GameId.of("campominado");
+        UUID session = UUID.randomUUID();
+        Instant now = Instant.now();
+
+        registry.register(new MessagePayloads.InstanceRegister(
+                id, game, "campominado-01", session,
+                MessagePayloads.GameStateWire.WAITING, 0, 2, 10, true), 0L, now);
+
+        // Sweep marks it UNAVAILABLE after timeout
+        registry.sweepLiveness(15_000_000_000L, 5_000_000_000L, 10_000_000_000L);
+        assertEquals(InstanceHealth.UNAVAILABLE, registry.find(id).orElseThrow().health());
+
+        // Direct liveness refresh recovers health to HEALTHY
+        assertTrue(registry.updateLiveness(id, 20_000_000_000L, now.plusSeconds(20)));
+        assertEquals(InstanceHealth.HEALTHY, registry.find(id).orElseThrow().health());
+        assertTrue(registry.find(id).orElseThrow().canAcceptPlayers());
+    }
 }

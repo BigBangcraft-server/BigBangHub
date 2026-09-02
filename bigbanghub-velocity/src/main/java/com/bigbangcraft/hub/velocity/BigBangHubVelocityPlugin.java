@@ -619,8 +619,13 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             }
 
             Instant now = Instant.now();
-            AdmissionTicket ticket = ticketService.consume(
-                    req.ticketId(), req.playerId(), req.matchId(), req.instanceId(), req.token(), now);
+            AdmissionTicket ticket;
+            if (ticketService.find(req.ticketId()).isPresent()) {
+                ticket = ticketService.consume(
+                        req.ticketId(), req.playerId(), req.matchId(), req.instanceId(), req.token(), now);
+            } else {
+                ticket = ticketService.consumeForPlayer(req.playerId(), req.instanceId(), now);
+            }
             MatchParticipant participant = matchRegistry.admitPlayer(ticket, now);
 
             if (partyService != null) {
@@ -1151,6 +1156,19 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             long suspectNanos = snapshot.registry().suspectThreshold().toNanos();
             long timeoutNanos = snapshot.registry().heartbeatTimeout().toNanos();
+
+            for (InstanceSnapshot inst : instanceRegistry.instances()) {
+                if (inst.playerCount() == 0 && inst.activeReservations() == 0) {
+                    proxy.getServer(inst.serverName()).ifPresent(srv -> {
+                        srv.ping().whenComplete((pingResult, pingError) -> {
+                            if (pingError == null && pingResult != null) {
+                                instanceRegistry.updateLiveness(inst.instanceId(), System.nanoTime(), Instant.now());
+                            }
+                        });
+                    });
+                }
+            }
+
             List<InMemoryInstanceRegistry.LivenessTransition> transitions =
                     instanceRegistry.sweepLiveness(nowNanos, suspectNanos, timeoutNanos);
 

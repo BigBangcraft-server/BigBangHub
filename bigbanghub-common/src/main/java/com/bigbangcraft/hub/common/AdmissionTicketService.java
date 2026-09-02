@@ -126,6 +126,38 @@ public final class AdmissionTicketService {
         return ticket;
     }
 
+    public synchronized AdmissionTicket consumeForPlayer(UUID playerId, ServerId instanceId, Instant now) {
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(now, "now");
+
+        UUID ticketId = activeByPlayer.get(playerId);
+        if (ticketId == null) {
+            throw new MatchException(MatchException.ErrorCode.UNAUTHORIZED, "No active admission ticket found for player");
+        }
+
+        AdmissionTicket ticket = ticketsById.get(ticketId);
+        if (ticket == null) {
+            activeByPlayer.remove(playerId);
+            throw new MatchException(MatchException.ErrorCode.UNAUTHORIZED, "Ticket not found");
+        }
+
+        if (ticket.isExpired(now)) {
+            ticketsById.remove(ticketId);
+            activeByPlayer.remove(playerId);
+            throw new MatchException(MatchException.ErrorCode.ADMISSION_EXPIRED, "Admission ticket has expired");
+        }
+
+        if (!ticket.instanceId().equals(instanceId)) {
+            throw new MatchException(MatchException.ErrorCode.UNAUTHORIZED, "Ticket instance ID mismatch");
+        }
+
+        ticketsById.remove(ticketId);
+        activeByPlayer.remove(playerId);
+        consumedTickets.add(ticketId);
+        return ticket;
+    }
+
     public synchronized Optional<AdmissionTicket> findActive(UUID playerId) {
         UUID ticketId = activeByPlayer.get(playerId);
         if (ticketId == null) return Optional.empty();

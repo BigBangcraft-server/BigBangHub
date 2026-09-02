@@ -110,6 +110,9 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
             instanceAgent = new PaperInstanceAgent(this, bridge, agentSettings);
             matchManager = new PaperMatchManager(this, bridge, transfers, instanceAgent, snapshot.match().autoCreateMatch());
             instanceAgent.start();
+            if (snapshot.match().autoCreateMatch()) {
+                matchManager.autoCreateAndOpen();
+            }
             getServer().getPluginManager().registerEvents(new PaperInstanceListener(this, instanceAgent), this);
             getLogger().info("BigBangHub Paper enabled in MINIGAME agent role for " + agentSettings.instanceId()
                     + " (" + agentSettings.gameId() + ")");

@@ -229,6 +229,21 @@ public final class InMemoryInstanceRegistry implements InstanceRegistry {
         return HeartbeatOutcome.ACCEPTED;
     }
 
+    public boolean updateLiveness(ServerId instanceId, long nowNanos, Instant now) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(now, "now");
+        Entry entry = instances.get(instanceId);
+        if (entry == null) return false;
+        InstanceHealth oldHealth = entry.health();
+        entry.updateLiveness(nowNanos, now);
+        if (oldHealth != InstanceHealth.HEALTHY) {
+            entry.setHealth(InstanceHealth.HEALTHY);
+            entry.setAcceptingPlayers(true);
+            events.publish(new InstanceHealthChangedEvent(instanceId, oldHealth, InstanceHealth.HEALTHY));
+        }
+        return true;
+    }
+
     public StateChangeOutcome updateState(MessagePayloads.InstanceStateChange change, long nowNanos, Instant now) {
         Objects.requireNonNull(change, "change");
         Objects.requireNonNull(now, "now");

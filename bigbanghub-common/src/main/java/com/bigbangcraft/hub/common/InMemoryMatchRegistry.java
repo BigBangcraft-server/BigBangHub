@@ -355,7 +355,13 @@ public final class InMemoryMatchRegistry {
 
         MatchSessionState session = matches.get(ticket.matchId());
         if (session == null) {
-            throw new MatchException(MatchException.ErrorCode.MATCH_NOT_FOUND, "Match not found: " + ticket.matchId());
+            MatchId activeMatchId = activeByInstance.get(ticket.instanceId());
+            if (activeMatchId != null) {
+                session = matches.get(activeMatchId);
+            }
+            if (session == null) {
+                throw new MatchException(MatchException.ErrorCode.MATCH_NOT_FOUND, "Match not found: " + ticket.matchId());
+            }
         }
 
         MatchId existingMatch = activeByPlayer.get(ticket.playerId());

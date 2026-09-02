@@ -9,10 +9,16 @@ public record MatchSettings(
         Duration finishedRetention,
         boolean autoCreateMatch,
         Duration reconnectTimeout,
-        boolean autoReconnect) {
+        boolean autoReconnect,
+        Duration postMatchTimeout) {
 
     public MatchSettings(Duration admissionTimeout, Duration returnTimeout, Duration finishedRetention, boolean autoCreateMatch) {
-        this(admissionTimeout, returnTimeout, finishedRetention, autoCreateMatch, Duration.ofSeconds(60), true);
+        this(admissionTimeout, returnTimeout, finishedRetention, autoCreateMatch, Duration.ofSeconds(60), true, Duration.ofSeconds(15));
+    }
+
+    public MatchSettings(Duration admissionTimeout, Duration returnTimeout, Duration finishedRetention, boolean autoCreateMatch,
+                         Duration reconnectTimeout, boolean autoReconnect) {
+        this(admissionTimeout, returnTimeout, finishedRetention, autoCreateMatch, reconnectTimeout, autoReconnect, Duration.ofSeconds(15));
     }
 
     public MatchSettings {
@@ -20,6 +26,7 @@ public record MatchSettings(
         Objects.requireNonNull(returnTimeout, "returnTimeout");
         Objects.requireNonNull(finishedRetention, "finishedRetention");
         Objects.requireNonNull(reconnectTimeout, "reconnectTimeout");
+        Objects.requireNonNull(postMatchTimeout, "postMatchTimeout");
         if (admissionTimeout.isNegative() || admissionTimeout.isZero()) {
             throw new IllegalArgumentException("admissionTimeout must be positive");
         }
@@ -32,6 +39,9 @@ public record MatchSettings(
         if (reconnectTimeout.isNegative()) {
             throw new IllegalArgumentException("reconnectTimeout cannot be negative");
         }
+        if (postMatchTimeout.isNegative()) {
+            throw new IllegalArgumentException("postMatchTimeout cannot be negative");
+        }
     }
 
     public static MatchSettings defaults() {
@@ -41,6 +51,7 @@ public record MatchSettings(
                 Duration.ofSeconds(60),
                 true,
                 Duration.ofSeconds(60),
-                true);
+                true,
+                Duration.ofSeconds(15));
     }
 }

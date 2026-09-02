@@ -395,8 +395,9 @@ public final class ConfigLoader {
         boolean autoCreate = bool(match, "auto-create-match", true);
         Duration reconnectTimeout = duration(match, "reconnect-timeout", Duration.ofSeconds(60), "match.reconnect-timeout");
         boolean autoReconnect = bool(match, "auto-reconnect", true);
+        Duration postMatchTimeout = duration(match, "post-match-timeout", Duration.ofSeconds(15), "match.post-match-timeout");
         try {
-            return new MatchSettings(admissionTimeout, returnTimeout, finishedRetention, autoCreate, reconnectTimeout, autoReconnect);
+            return new MatchSettings(admissionTimeout, returnTimeout, finishedRetention, autoCreate, reconnectTimeout, autoReconnect, postMatchTimeout);
         } catch (IllegalArgumentException exception) {
             throw new ConfigException("Invalid match configuration: " + exception.getMessage(), exception);
         }

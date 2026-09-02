@@ -14,7 +14,8 @@ public record AdmissionTicket(
         Instant issuedAt,
         Instant expiresAt,
         String token,
-        Optional<PartyId> partyId) {
+        Optional<PartyId> partyId,
+        boolean isReconnect) {
 
     public AdmissionTicket(
             UUID ticketId,
@@ -25,7 +26,20 @@ public record AdmissionTicket(
             Instant issuedAt,
             Instant expiresAt,
             String token) {
-        this(ticketId, playerId, matchId, instanceId, role, issuedAt, expiresAt, token, Optional.empty());
+        this(ticketId, playerId, matchId, instanceId, role, issuedAt, expiresAt, token, Optional.empty(), false);
+    }
+
+    public AdmissionTicket(
+            UUID ticketId,
+            UUID playerId,
+            MatchId matchId,
+            ServerId instanceId,
+            ParticipantRole role,
+            Instant issuedAt,
+            Instant expiresAt,
+            String token,
+            Optional<PartyId> partyId) {
+        this(ticketId, playerId, matchId, instanceId, role, issuedAt, expiresAt, token, partyId, false);
     }
 
     public AdmissionTicket {

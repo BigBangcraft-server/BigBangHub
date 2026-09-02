@@ -132,7 +132,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final Set<ServerInfo> ownedServers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> inFlightTransfers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Long> lastRequestNanos = new ConcurrentHashMap<>();
-    private final Map<String, Long> backendLastRequestNanos = new ConcurrentHashMap<>();
+    private final Map<String, TokenBucket> backendBuckets = new ConcurrentHashMap<>();
 
     // Telemetry and operational metrics
     private final AtomicLong registrationsCount = new AtomicLong();
@@ -1264,10 +1264,25 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         return false;
     }
 
+    private static final class TokenBucket {
+        private double tokens = 50.0;
+        private long lastNanos = System.nanoTime();
+
+        synchronized boolean tryConsume() {
+            long now = System.nanoTime();
+            double elapsed = (now - lastNanos) / 1_000_000_000.0;
+            lastNanos = now;
+            tokens = Math.min(50.0, tokens + elapsed * 50.0);
+            if (tokens >= 1.0) {
+                tokens -= 1.0;
+                return true;
+            }
+            return false;
+        }
+    }
+
     private boolean backendRateAllowed(String serverName) {
-        long now = System.nanoTime();
-        Long prev = backendLastRequestNanos.put(serverName, now);
-        return prev == null || (now - prev) >= 20_000_000L;
+        return backendBuckets.computeIfAbsent(serverName, k -> new TokenBucket()).tryConsume();
     }
 
     void reload(CommandSource source) {

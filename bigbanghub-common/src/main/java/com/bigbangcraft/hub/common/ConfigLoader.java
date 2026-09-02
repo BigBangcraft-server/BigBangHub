@@ -304,7 +304,10 @@ public final class ConfigLoader {
         if (value == null) return List.of();
         if (!(value instanceof List<?> list)) throw new ConfigException("Expected list at " + key);
         List<String> result = new ArrayList<>(list.size());
-        for (Object item : list) result.add(stringValue(item, key));
+        for (Object item : list) {
+            if (!(item instanceof String string)) throw new ConfigException("Expected string at " + key);
+            result.add(string);
+        }
         return List.copyOf(result);
     }
 }

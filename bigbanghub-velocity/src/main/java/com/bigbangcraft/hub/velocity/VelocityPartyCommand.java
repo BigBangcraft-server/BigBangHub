@@ -7,9 +7,12 @@ import com.bigbangcraft.hub.api.PartyMember;
 import com.bigbangcraft.hub.api.PartyRole;
 import com.bigbangcraft.hub.api.PartyService;
 import com.bigbangcraft.hub.api.PartySnapshot;
+import com.bigbangcraft.hub.api.PartyState;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
@@ -58,7 +61,8 @@ final class VelocityPartyCommand implements SimpleCommand {
             case "leader" -> handleLeader(player, args);
             case "disband" -> handleDisband(player);
             case "list" -> handleList(player);
-            default -> player.sendPlainMessage("Use: /party <invite|accept|decline|leave|kick|leader|disband|list>");
+            case "warp" -> handleWarp(player);
+            default -> player.sendPlainMessage("Use: /party <invite|accept|decline|leave|kick|leader|disband|list|warp>");
         }
     }
 
@@ -67,7 +71,7 @@ final class VelocityPartyCommand implements SimpleCommand {
         String[] args = invocation.arguments();
         if (args.length <= 1) {
             String prefix = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
-            List<String> options = List.of("invite", "accept", "decline", "leave", "kick", "leader", "disband", "list");
+            List<String> options = List.of("invite", "accept", "decline", "leave", "kick", "leader", "disband", "list", "warp");
             return options.stream().filter(s -> s.startsWith(prefix)).toList();
         }
 
@@ -402,6 +406,54 @@ final class VelocityPartyCommand implements SimpleCommand {
             player.sendPlainMessage(roleStr + "§f" + name);
         }
         player.sendPlainMessage("§b§m----------------------------------------");
+    }
+
+    private void handleWarp(Player player) {
+        if (!player.hasPermission("bigbanghub.party.use")) {
+            player.sendPlainMessage("§cVocê não tem permissão.");
+            return;
+        }
+
+        Optional<PartySnapshot> partyOpt = parties.partyOf(player.getUniqueId());
+        if (partyOpt.isEmpty()) {
+            player.sendPlainMessage("§cVocê não está em uma party.");
+            return;
+        }
+
+        PartySnapshot party = partyOpt.get();
+        if (!party.isLeader(player.getUniqueId())) {
+            player.sendPlainMessage("§cApenas o líder pode puxar a party.");
+            return;
+        }
+
+        if (party.state() != PartyState.IDLE) {
+            player.sendPlainMessage("§cNão é possível puxar a party no estado atual (" + party.state() + ").");
+            return;
+        }
+
+        Optional<ServerConnection> current = player.getCurrentServer();
+        if (current.isEmpty()) {
+            player.sendPlainMessage("§cServidor atual indisponível.");
+            return;
+        }
+
+        RegisteredServer targetServer = current.get().getServer();
+        int warped = 0;
+        for (UUID memberId : party.memberIds()) {
+            if (memberId.equals(player.getUniqueId())) continue;
+            Player member = proxy.getPlayer(memberId).orElse(null);
+            if (member != null && member.isActive()) {
+                boolean alreadyThere = member.getCurrentServer()
+                        .map(s -> s.getServerInfo().equals(targetServer.getServerInfo()))
+                        .orElse(false);
+                if (!alreadyThere) {
+                    member.createConnectionRequest(targetServer).connect();
+                    member.sendPlainMessage("§aO líder puxou a party para o servidor dele.");
+                    warped++;
+                }
+            }
+        }
+        player.sendPlainMessage("§aPuxando " + warped + " membro(s) da party para o seu servidor.");
     }
 
     private void broadcastToParty(PartySnapshot party, String message, UUID excludePlayerId) {

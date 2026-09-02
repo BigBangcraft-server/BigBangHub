@@ -315,7 +315,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 case INSTANCE_READY -> handleInstanceReady(connection, envelope);
                 case PLAYER_RETURN -> handlePlayerReturn(connection, envelope);
                 default -> {
-                    if (backendName.equals(snapshot.proxy().hubServerName())) {
+                    if (backendName.equals(snapshot.proxy().hubServerName()) || envelope.messageType().isPartyMessage()) {
                         Player player = connection.getPlayer();
                         if (player != null && rateAllowed(player.getUniqueId())) {
                             handle(connection, player, envelope);
@@ -538,7 +538,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             send(connection, new ProtocolEnvelope(1, MessageType.ADMISSION_RESPONSE, envelope.correlationId(),
                     MessagePayloads.admissionResponse(new MessagePayloads.AdmissionResponse(
-                            req.ticketId(), req.playerId(), req.matchId(), true, roleWire, "Admitted successfully"))));
+                            req.ticketId(), req.playerId(), req.matchId(), true, roleWire, "Admitted successfully", ticket.partyId()))));
 
             logger.info("Player {} admitted into match {} on {} ({})",
                     req.playerId(), req.matchId(), req.instanceId(), ticket.role());
@@ -819,9 +819,10 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
             Duration admissionTtl = configSnapshot().match().admissionTimeout();
             List<AdmissionTicket> tickets = new ArrayList<>(groupSize);
+            Optional<PartyId> partyIdOpt = (party != null) ? Optional.of(party.partyId()) : Optional.empty();
             if (targetMatchId != null) {
                 for (UUID memberId : groupMembers) {
-                    tickets.add(ticketService.issue(memberId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl));
+                    tickets.add(ticketService.issue(memberId, targetMatchId, targetInstanceId, ParticipantRole.PLAYER, now, admissionTtl, partyIdOpt));
                 }
             }
 
@@ -1085,6 +1086,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             case PARTY_KICK -> handlePartyKick(connection, player, envelope);
             case PARTY_LEADER_CHANGE -> handlePartyLeaderChange(connection, player, envelope);
             case PARTY_DISBAND -> handlePartyDisband(connection, player, envelope);
+            case PARTY_WARP -> handlePartyWarp(connection, player, envelope);
             default -> logger.warn("Rejected unexpected request type {}", envelope.messageType());
         }
     }
@@ -1243,6 +1245,51 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         }
     }
 
+    private void handlePartyWarp(ServerConnection connection, Player player, ProtocolEnvelope envelope) {
+        try {
+            MessagePayloads.PartyWarpPayload req = MessagePayloads.partyWarp(envelope.payload());
+            if (!player.getUniqueId().equals(req.leaderId())) {
+                rejectIdentity(connection, envelope, player);
+                return;
+            }
+            PartySnapshot party = partyService.partyOf(player.getUniqueId()).orElse(null);
+            if (party == null || !party.isLeader(player.getUniqueId())) {
+                sendPartyResponse(connection, envelope, player.getUniqueId(), false, "Apenas o líder pode puxar a party.", Optional.empty());
+                return;
+            }
+            if (party.state() != PartyState.IDLE) {
+                sendPartyResponse(connection, envelope, player.getUniqueId(), false,
+                        "Não é possível puxar a party no estado atual (" + party.state() + ").", Optional.of(party.partyId()));
+                return;
+            }
+            Optional<ServerConnection> current = player.getCurrentServer();
+            if (current.isEmpty()) {
+                sendPartyResponse(connection, envelope, player.getUniqueId(), false, "Servidor atual indisponível.", Optional.of(party.partyId()));
+                return;
+            }
+            RegisteredServer targetServer = current.get().getServer();
+            int warped = 0;
+            for (UUID memberId : party.memberIds()) {
+                if (memberId.equals(player.getUniqueId())) continue;
+                Player member = proxy.getPlayer(memberId).orElse(null);
+                if (member != null && member.isActive()) {
+                    boolean alreadyThere = member.getCurrentServer()
+                            .map(s -> s.getServerInfo().equals(targetServer.getServerInfo()))
+                            .orElse(false);
+                    if (!alreadyThere) {
+                        member.createConnectionRequest(targetServer).connect();
+                        member.sendPlainMessage("§aO líder puxou a party para o servidor dele.");
+                        warped++;
+                    }
+                }
+            }
+            sendPartyResponse(connection, envelope, player.getUniqueId(), true,
+                    "Puxando " + warped + " membro(s) da party para seu servidor.", Optional.of(party.partyId()));
+        } catch (ProtocolValidationException e) {
+            logger.warn("Invalid party warp payload: {}", e.getMessage());
+        }
+    }
+
     private void sendPartyResponse(ServerConnection connection, ProtocolEnvelope request,
                                    UUID playerId, boolean success, String message, Optional<PartyId> partyId) {
         send(connection, new ProtocolEnvelope(1, MessageType.PARTY_RESPONSE, request.correlationId(),
@@ -1375,6 +1422,12 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     }
 
     void install(HubConfigSnapshot snapshot) throws ConfigException, IOException {
+        if (codec == null) {
+            codec = createCodec(snapshot);
+        }
+        if (channel == null) {
+            channel = MinecraftChannelIdentifier.from(snapshot.proxy().channel());
+        }
         GameRegistry nextGames = new InMemoryGameRegistry(snapshot.games());
         ServerRegistry nextServers = new InMemoryServerRegistry(snapshot.servers());
         ensureConfiguredServers(snapshot, true);
@@ -1505,6 +1558,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     public InMemoryQueueService queueService() { return queues; }
     public InMemoryMatchRegistry matchRegistry() { return matchRegistry; }
     public AdmissionTicketService ticketService() { return ticketService; }
+    public ProtocolCodec codec() { return codec; }
 
     // Telemetry metric accessors
     public long registrationsCount() { return registrationsCount.get(); }

@@ -94,6 +94,21 @@ final class VelocityBridge implements PluginMessageListener {
         else Bukkit.getScheduler().runTask(plugin, send);
     }
 
+    void send(UUID playerId, MessageType type, byte[] payload) {
+        Runnable send = () -> {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) return;
+            try {
+                player.sendPluginMessage(plugin, channel,
+                        codec.encode(new ProtocolEnvelope(ProtocolCodec.PROTOCOL_VERSION, type, UUID.randomUUID(), payload)));
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Failed to send plugin message: " + exception.getMessage());
+            }
+        };
+        if (Bukkit.isPrimaryThread()) send.run();
+        else Bukkit.getScheduler().runTask(plugin, send);
+    }
+
     @Override
     public void onPluginMessageReceived(String incomingChannel, Player player, byte[] message) {
         if (!channel.equals(incomingChannel)) return;

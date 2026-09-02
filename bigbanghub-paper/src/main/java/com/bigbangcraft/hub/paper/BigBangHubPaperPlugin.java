@@ -167,6 +167,7 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
     CompassMenuController menu() { return menu.get(); }
     public PaperInstanceAgent instanceAgent() { return instanceAgent; }
     public PaperMatchManager matchManager() { return matchManager; }
+    public PaperPartyService partyService() { return partyService; }
 
     @Override public ServerRole role() { return configSnapshot().role(); }
     @Override public GameRegistry games() { return games.get(); }

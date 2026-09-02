@@ -214,6 +214,12 @@ final class PaperPartyService implements PartyService {
     @Override public void addListener(Consumer<PartyEvent> listener) { eventBus.add(listener); }
     @Override public void removeListener(Consumer<PartyEvent> listener) { eventBus.remove(listener); }
 
+    public void warpParty(UUID leaderId) {
+        if (bridge == null) return;
+        byte[] payload = MessagePayloads.partyWarp(new MessagePayloads.PartyWarpPayload(leaderId));
+        bridge.send(leaderId, MessageType.PARTY_WARP, payload);
+    }
+
     PartyEventBus eventBus() { return eventBus; }
     InMemoryPartyService localFallback() { return localFallback; }
     void clear() { localFallback.clear(); }

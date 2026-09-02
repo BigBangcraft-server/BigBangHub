@@ -54,7 +54,8 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
             case "leader" -> handleLeader(player, args);
             case "disband" -> handleDisband(player);
             case "list" -> handleList(player);
-            default -> player.sendMessage("§7Use: /party <invite|accept|decline|leave|kick|leader|disband|list>");
+            case "warp" -> handleWarp(player);
+            default -> player.sendMessage("§7Use: /party <invite|accept|decline|leave|kick|leader|disband|list|warp>");
         }
         return true;
     }
@@ -63,7 +64,7 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            return List.of("invite", "accept", "decline", "leave", "kick", "leader", "disband", "list").stream()
+            return List.of("invite", "accept", "decline", "leave", "kick", "leader", "disband", "list", "warp").stream()
                     .filter(s -> s.startsWith(prefix)).toList();
         }
 
@@ -407,6 +408,16 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(roleStr + "§f" + name);
         }
         player.sendMessage("§b§m----------------------------------------");
+    }
+
+    private void handleWarp(Player player) {
+        if (!player.hasPermission("bigbanghub.party.use")) {
+            player.sendMessage("§cVocê não tem permissão.");
+            return;
+        }
+        if (plugin.partyService() instanceof PaperPartyService paperParty) {
+            paperParty.warpParty(player.getUniqueId());
+        }
     }
 
     private void broadcastParty(PartySnapshot party, String message, UUID exclude) {

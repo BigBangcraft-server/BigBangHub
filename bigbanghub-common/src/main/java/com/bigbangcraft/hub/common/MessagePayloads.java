@@ -51,7 +51,13 @@ public final class MessagePayloads {
     public record AdmissionRequest(UUID ticketId, UUID playerId, MatchId matchId,
                                   ServerId instanceId, String token) { }
     public record AdmissionResponse(UUID ticketId, UUID playerId, MatchId matchId,
-                                   boolean accepted, ParticipantRoleWire role, String reason) { }
+                                    boolean accepted, ParticipantRoleWire role, String reason,
+                                    Optional<PartyId> partyId) {
+        public AdmissionResponse(UUID ticketId, UUID playerId, MatchId matchId,
+                                 boolean accepted, ParticipantRoleWire role, String reason) {
+            this(ticketId, playerId, matchId, accepted, role, reason, Optional.empty());
+        }
+    }
     public record ParticipantStateChange(MatchId matchId, UUID playerId,
                                          ParticipantRoleWire role, ParticipantStateWire state) { }
     public record MatchFinish(ServerId instanceId, UUID sessionId, MatchId matchId, long revision,
@@ -73,6 +79,7 @@ public final class MessagePayloads {
     public record PartyDisbandPayload(UUID actorId, PartyId partyId) { }
     public record PartySyncPayload(PartyId partyId, UUID leaderId, List<UUID> members, PartyStateWire state, long revision) { }
     public record PartyResponsePayload(UUID playerId, boolean success, String message, Optional<PartyId> partyId) { }
+    public record PartyWarpPayload(UUID leaderId) { }
 
     public enum GameStateWire { OFFLINE, STARTING, WAITING, STARTING_GAME, IN_GAME, ENDING, FULL, MAINTENANCE }
     public enum MatchStateWire { CREATED, WAITING, COUNTDOWN, LOCKED, IN_GAME, ENDING, FINISHED, ABORTED }
@@ -412,6 +419,10 @@ public final class MessagePayloads {
             out.writeBoolean(response.accepted());
             out.writeByte(response.role().ordinal());
             text(out, response.reason());
+            out.writeBoolean(response.partyId().isPresent());
+            if (response.partyId().isPresent()) {
+                uuid(out, response.partyId().get().value());
+            }
         });
     }
 
@@ -424,7 +435,13 @@ public final class MessagePayloads {
             int roleOrd = input.readUnsignedByte();
             if (roleOrd >= ParticipantRoleWire.values().length) throw new IOException("Invalid participant role");
             String reason = text(input);
-            return new AdmissionResponse(ticketId, playerId, matchId, accepted, ParticipantRoleWire.values()[roleOrd], reason);
+            Optional<PartyId> partyId = Optional.empty();
+            if (input.available() > 0) {
+                if (input.readBoolean()) {
+                    partyId = Optional.of(PartyId.of(uuid(input)));
+                }
+            }
+            return new AdmissionResponse(ticketId, playerId, matchId, accepted, ParticipantRoleWire.values()[roleOrd], reason, partyId);
         }, "admission response");
     }
 
@@ -693,6 +710,14 @@ public final class MessagePayloads {
             Optional<PartyId> partyId = present ? Optional.of(PartyId.of(uuid(input))) : Optional.empty();
             return new PartyResponsePayload(playerId, success, message, partyId);
         }, "party response");
+    }
+
+    public static byte[] partyWarp(PartyWarpPayload payload) {
+        return write(out -> uuid(out, payload.leaderId()));
+    }
+
+    public static PartyWarpPayload partyWarp(byte[] payload) throws ProtocolValidationException {
+        return read(payload, input -> new PartyWarpPayload(uuid(input)), "party warp");
     }
 
     private interface Writer { void write(DataOutputStream out) throws IOException; }

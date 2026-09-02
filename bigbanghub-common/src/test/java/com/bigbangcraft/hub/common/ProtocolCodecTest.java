@@ -176,5 +176,32 @@ class ProtocolCodecTest {
         ProtocolEnvelope envResp = new ProtocolEnvelope(1, MessageType.PARTY_RESPONSE, correlation, respBytes);
         ProtocolEnvelope decResp = codec.decode(codec.encode(envResp));
         assertEquals(resp, MessagePayloads.partyResponse(decResp.payload()));
+
+        // 11. Party Warp
+        MessagePayloads.PartyWarpPayload warp = new MessagePayloads.PartyWarpPayload(leaderId);
+        byte[] warpBytes = MessagePayloads.partyWarp(warp);
+        ProtocolEnvelope envWarp = new ProtocolEnvelope(1, MessageType.PARTY_WARP, correlation, warpBytes);
+        ProtocolEnvelope decWarp = codec.decode(codec.encode(envWarp));
+        assertEquals(warp, MessagePayloads.partyWarp(decWarp.payload()));
+    }
+
+    @Test
+    void roundTripsAdmissionResponseWithAndWithoutPartyId() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        com.bigbangcraft.hub.api.MatchId matchId = com.bigbangcraft.hub.api.MatchId.random();
+        com.bigbangcraft.hub.api.PartyId partyId = com.bigbangcraft.hub.api.PartyId.random();
+
+        MessagePayloads.AdmissionResponse withParty = new MessagePayloads.AdmissionResponse(
+                ticketId, playerId, matchId, true, MessagePayloads.ParticipantRoleWire.PLAYER, "Admitted", java.util.Optional.of(partyId));
+        byte[] bytesWith = MessagePayloads.admissionResponse(withParty);
+        MessagePayloads.AdmissionResponse decWith = MessagePayloads.admissionResponse(bytesWith);
+        assertEquals(withParty, decWith);
+
+        MessagePayloads.AdmissionResponse withoutParty = new MessagePayloads.AdmissionResponse(
+                ticketId, playerId, matchId, false, MessagePayloads.ParticipantRoleWire.SPECTATOR, "Full", java.util.Optional.empty());
+        byte[] bytesWithout = MessagePayloads.admissionResponse(withoutParty);
+        MessagePayloads.AdmissionResponse decWithout = MessagePayloads.admissionResponse(bytesWithout);
+        assertEquals(withoutParty, decWithout);
     }
 }

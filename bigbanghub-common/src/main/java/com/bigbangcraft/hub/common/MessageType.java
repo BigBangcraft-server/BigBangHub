@@ -33,7 +33,8 @@ public enum MessageType {
     PARTY_LEADER_CHANGE(30),
     PARTY_DISBAND(31),
     PARTY_SYNC(32),
-    PARTY_RESPONSE(33);
+    PARTY_RESPONSE(33),
+    PARTY_WARP(34);
 
     private final int code;
 
@@ -50,5 +51,11 @@ public enum MessageType {
             if (type.code == code) return type;
         }
         throw new ProtocolValidationException("Unknown message type: " + code);
+    }
+
+    public boolean isPartyMessage() {
+        return this == PARTY_CREATE || this == PARTY_INVITE || this == PARTY_ACCEPT ||
+               this == PARTY_DECLINE || this == PARTY_LEAVE || this == PARTY_KICK ||
+               this == PARTY_LEADER_CHANGE || this == PARTY_DISBAND || this == PARTY_WARP;
     }
 }

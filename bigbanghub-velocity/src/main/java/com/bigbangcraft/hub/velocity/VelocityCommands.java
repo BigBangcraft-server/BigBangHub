@@ -1,7 +1,6 @@
 package com.bigbangcraft.hub.velocity;
 
 import com.bigbangcraft.hub.api.GameId;
-import com.bigbangcraft.hub.api.QueueStatus;
 import com.bigbangcraft.hub.api.ServerDefinition;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;

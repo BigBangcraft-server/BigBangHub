@@ -153,6 +153,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             games.set(nextGames);
             servers.set(nextServers);
             routing.set(new FillWaitingRoutingService(nextGames, nextServers));
+            transfers = new VelocityTransferService(proxy, nextServers);
             config.set(next);
             source.sendPlainMessage("BigBangHub configuration reloaded.");
         } catch (ConfigException | IllegalArgumentException exception) {

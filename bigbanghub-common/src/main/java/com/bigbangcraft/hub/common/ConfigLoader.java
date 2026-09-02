@@ -6,6 +6,7 @@ import com.bigbangcraft.hub.api.GameState;
 import com.bigbangcraft.hub.api.RoutingStrategy;
 import com.bigbangcraft.hub.api.ServerDefinition;
 import com.bigbangcraft.hub.api.ServerId;
+import com.bigbangcraft.hub.api.ServerRole;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
@@ -14,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,7 +39,13 @@ public final class ConfigLoader {
             List<GameDefinition> gameDefinitions = readGames(games);
             List<ServerDefinition> serverDefinitions = readServers(servers, gameDefinitions);
             CompassMenu compass = readCompass(menus, gameDefinitions, serverDefinitions);
+            ServerRole role = readRole(config);
+            Optional<InstanceAgentSettings> instance = readInstance(config);
+            RegistrySettings registry = readRegistry(config);
             return new HubConfigSnapshot(
+                    role,
+                    instance,
+                    registry,
                     gameDefinitions,
                     serverDefinitions,
                     compass,
@@ -309,5 +318,84 @@ public final class ConfigLoader {
             result.add(string);
         }
         return List.copyOf(result);
+    }
+
+    private static ServerRole readRole(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> server = optionalMap(root.get("server"));
+        String roleStr = stringOr(server, "role", "HUB");
+        try {
+            return ServerRole.parse(roleStr);
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException("Invalid server role at server.role: " + roleStr, exception);
+        }
+    }
+
+    private static Optional<InstanceAgentSettings> readInstance(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> server = optionalMap(root.get("server"));
+        Object instObj = server.get("instance");
+        if (instObj == null) instObj = root.get("instance");
+        if (instObj == null) return Optional.empty();
+
+        Map<String, Object> inst = map(instObj, "instance");
+        ServerId instanceId = serverId(string(inst, "instance-id", "instance.instance-id"), "instance.instance-id");
+        GameId gameId = id(string(inst, "game-id", "instance.game-id"), "instance.game-id");
+        String serverName = stringOr(inst, "server-name", instanceId.value());
+
+        Map<String, Object> heartbeat = optionalMap(inst.get("heartbeat"));
+        Duration interval = duration(heartbeat, "interval", Duration.ofSeconds(3), "instance.heartbeat.interval");
+
+        Map<String, Object> capacity = optionalMap(inst.get("capacity"));
+        int min = integer(capacity, "min-players", 2, "instance.capacity.min-players");
+        int max = integer(capacity, "max-players", 10, "instance.capacity.max-players");
+        boolean accepting = bool(inst, "accepting-players", true);
+
+        try {
+            return Optional.of(new InstanceAgentSettings(instanceId, gameId, serverName, interval, min, max, accepting));
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException("Invalid instance configuration: " + exception.getMessage(), exception);
+        }
+    }
+
+    private static RegistrySettings readRegistry(Map<String, Object> root) throws ConfigException {
+        Map<String, Object> reg = optionalMap(root.get("registry"));
+        Duration hbTimeout = duration(reg, "heartbeat-timeout", Duration.ofSeconds(10), "registry.heartbeat-timeout");
+        Duration suspectThreshold = duration(reg, "suspect-threshold", Duration.ofSeconds(5), "registry.suspect-threshold");
+
+        Map<String, Object> routing = optionalMap(root.get("routing"));
+        Duration resTtl = duration(routing, "reservation-ttl", Duration.ofSeconds(10), "routing.reservation-ttl");
+        boolean fallback = bool(reg, "fallback-to-hub", true);
+
+        Map<String, Object> allowed = optionalMap(reg.get("allowed"));
+        Map<String, GameId> allowedMap = new HashMap<>();
+        for (Map.Entry<String, Object> entry : allowed.entrySet()) {
+            Map<String, Object> item = map(entry.getValue(), "registry.allowed." + entry.getKey());
+            GameId game = id(string(item, "game-id", "registry.allowed." + entry.getKey() + ".game-id"),
+                    "registry.allowed." + entry.getKey() + ".game-id");
+            allowedMap.put(entry.getKey(), game);
+        }
+
+        try {
+            return new RegistrySettings(hbTimeout, suspectThreshold, resTtl, allowedMap, fallback);
+        } catch (IllegalArgumentException exception) {
+            throw new ConfigException("Invalid registry configuration: " + exception.getMessage(), exception);
+        }
+    }
+
+    private static Duration duration(Map<String, Object> map, String key, Duration fallback, String path) throws ConfigException {
+        Object val = map.get(key);
+        if (val == null) return fallback;
+        if (val instanceof Number num) return Duration.ofSeconds(num.longValue());
+        if (val instanceof String str) {
+            String s = str.trim().toLowerCase(Locale.ROOT);
+            try {
+                if (s.endsWith("ms")) return Duration.ofMillis(Long.parseLong(s.substring(0, s.length() - 2).trim()));
+                if (s.endsWith("s")) return Duration.ofSeconds(Long.parseLong(s.substring(0, s.length() - 1).trim()));
+                if (s.endsWith("m")) return Duration.ofMinutes(Long.parseLong(s.substring(0, s.length() - 1).trim()));
+                return Duration.ofSeconds(Long.parseLong(s));
+            } catch (NumberFormatException exception) {
+                throw new ConfigException("Invalid duration string at " + path + ": " + str, exception);
+            }
+        }
+        throw new ConfigException("Expected duration at " + path);
     }
 }

@@ -27,6 +27,7 @@ public final class InMemoryQueueService implements QueueService {
     private final ReentrantLock lock = new ReentrantLock();
     private final Map<GameId, LinkedHashSet<UUID>> queues = new LinkedHashMap<>();
     private final Map<UUID, GameId> memberships = new LinkedHashMap<>();
+    private final Map<UUID, Long> joinTimesNanos = new LinkedHashMap<>();
     private final QueueEventBus events;
 
     public InMemoryQueueService(QueueEventBus events) {
@@ -49,6 +50,7 @@ public final class InMemoryQueueService implements QueueService {
                 LinkedHashSet<UUID> queue = queues.computeIfAbsent(gameId, ignored -> new LinkedHashSet<>());
                 queue.add(playerId);
                 memberships.put(playerId, gameId);
+                joinTimesNanos.put(playerId, System.nanoTime());
                 int position = positionLocked(playerId, gameId);
                 emitted.add(new QueueJoinedEvent(playerId, gameId, position));
                 result = QueueResult.of(QueueResult.Code.JOINED, gameId, position, queue.size(),
@@ -144,6 +146,54 @@ public final class InMemoryQueueService implements QueueService {
         try {
             queues.clear();
             memberships.clear();
+            joinTimesNanos.clear();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public java.util.Optional<UUID> peekNext(GameId gameId) {
+        lock.lock();
+        try {
+            LinkedHashSet<UUID> queue = queues.get(Objects.requireNonNull(gameId, "gameId"));
+            if (queue == null || queue.isEmpty()) return java.util.Optional.empty();
+            return java.util.Optional.of(queue.iterator().next());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public List<UUID> queuedPlayers(GameId gameId) {
+        lock.lock();
+        try {
+            LinkedHashSet<UUID> queue = queues.get(Objects.requireNonNull(gameId, "gameId"));
+            return queue == null ? List.of() : List.copyOf(queue);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public Map<GameId, Integer> queueSizes() {
+        lock.lock();
+        try {
+            Map<GameId, Integer> sizes = new LinkedHashMap<>();
+            for (Map.Entry<GameId, LinkedHashSet<UUID>> entry : queues.entrySet()) {
+                sizes.put(entry.getKey(), entry.getValue().size());
+            }
+            return Map.copyOf(sizes);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public long oldestWaitNanos(GameId gameId, long nowNanos) {
+        lock.lock();
+        try {
+            LinkedHashSet<UUID> queue = queues.get(Objects.requireNonNull(gameId, "gameId"));
+            if (queue == null || queue.isEmpty()) return 0L;
+            UUID oldestPlayer = queue.iterator().next();
+            Long joined = joinTimesNanos.get(oldestPlayer);
+            return joined != null ? Math.max(0, nowNanos - joined) : 0L;
         } finally {
             lock.unlock();
         }
@@ -182,6 +232,7 @@ public final class InMemoryQueueService implements QueueService {
             if (queue.isEmpty()) queues.remove(gameId);
         }
         memberships.remove(playerId);
+        joinTimesNanos.remove(playerId);
         emitted.add(new QueueLeftEvent(playerId, gameId));
     }
 

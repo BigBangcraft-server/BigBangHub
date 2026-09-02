@@ -1,0 +1,7 @@
+dependencies {
+    api project(':bigbanghub-api')
+    implementation "org.yaml:snakeyaml:${rootProject.snakeYamlVersion}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junitVersion}"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher:${rootProject.junitPlatformVersion}"
+}

@@ -45,6 +45,8 @@ match:
   return-timeout: 10s      # Tempo limite para transferências de retorno ao Hub
   finished-retention: 60s  # Retenção de tombstones de partidas encerradas para consulta
   auto-create-match: true  # Se true, cria e abre partidas automaticamente no boot e pós-cleanup
+  reconnect-timeout: 60s   # Janela de tolerância para desconexão e recuperação de sessão
+  auto-reconnect: true     # Reconecta automaticamente à partida ao reentrar no Hub
 
 spectator:
   enabled: true            # Permite o ingresso e transição de jogadores para espectadores

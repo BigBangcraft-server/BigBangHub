@@ -224,3 +224,26 @@ if (partyId.isPresent()) {
 Invariantes de Coesão:
 - O vínculo de party permanece estritamente preservado durante transições de eliminação (`ELIMINATED`) ou espectador (`SPECTATING`).
 - Ao término da partida via `finish(result)`, os membros da party retornam ao Hub de forma coordenada, preservando o grupo com estado revertido para `IDLE`.
+
+---
+
+## 8. Tratamento de Reconnect e Recuperação de Estado (BigBangHub 0.4.0)
+
+Quando um jogador desconecta durante uma partida em andamento, sua vaga é mantida reservada no estado `DISCONNECTED` durante a janela configurada em `match.reconnect-timeout`.
+
+Ao reconectar, o BigBangHub dispara o evento `PlayerReconnectedEvent` no barramento de eventos:
+
+```java
+hubApi.addMatchListener(event -> {
+    if (event instanceof PlayerReconnectedEvent reconnected) {
+        UUID playerId = reconnected.playerId();
+        Player player = Bukkit.getPlayer(playerId);
+        if (player != null) {
+            // Restaurar localização na arena, inventário salvo, kit ou equipe
+            restorePlayerGameState(player);
+        }
+    }
+});
+```
+
+Se o jogador não retornar antes da expiração do timeout, o evento `MatchParticipantLeftEvent` é disparado com motivo `"reconnect expired"`, liberando definitivamente a vaga e permitindo que a lógica de minigame aplique penalidade de desistência ou auto-vitória aos oponentes.

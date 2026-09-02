@@ -113,3 +113,27 @@ Quando uma partida atinge `FINISHED` ou `ABORTED`:
 
 - **Timeout de Heartbeat / Crash de Instância**: Se uma instância ficar inativa ou cair durante uma partida, o sweep de liveness do Velocity detecta o estado `UNAVAILABLE`, aborta automaticamente a partida associada, invalida os tickets pendentes, cancela reservas órfãs e redispara a fila.
 - **Tombstones de Partidas**: Partidas finalizadas ou abortadas são mantidas em memória pelo tempo configurado (`finished-retention`, padrão 60s) para consulta de métricas e auditoria, sendo limpas periodicamente sem vazamento de memória.
+
+---
+
+## 8. Reconnect & Recuperação de Sessão
+
+### Janela de Recuperação de Sessão (`reconnect-timeout`)
+- Quando um jogador se desconecta da rede durante uma partida ativa (`WAITING`, `COUNTDOWN`, `LOCKED` ou `IN_GAME`), seu estado é transicionado para `DISCONNECTED`.
+- Sua vaga na partida permanece **reservada** durante a janela de reconexão configurável (`match.reconnect-timeout`, padrão: 60s).
+- O número de jogadores ativos continua computando a vaga reservada, evitando que novos jogadores ou filas preencham o slot do desconectado.
+
+### Auto-Reconnect e Comando `/reconnect`
+- Se o jogador reconectar à rede dentro da janela:
+  - Se `match.auto-reconnect: true`: O jogador é automaticamente transferido de volta à instância do minigame com a mensagem informativa `Reconectando à sua partida em andamento...`.
+  - Se `match.auto-reconnect: false`: Uma mensagem com componente interativo clicável é apresentada oferecendo o retorno via comando `/reconnect`.
+- O comando `/reconnect` pode ser executado a qualquer momento no Velocity ou Paper dentro da janela de validade.
+
+### Readmissão de Reconnect
+- Um novo `AdmissionTicket` com a flag `isReconnect = true` é emitido.
+- A admissão por reconnect é autorizada mesmo que a partida esteja em `IN_GAME` ou `LOCKED` (com `allowLateJoin: false`), pois o jogador já fazia parte da sessão.
+- O participante é restaurado para o estado `ACTIVE` e o evento `PlayerReconnectedEvent` é publicado tanto no Velocity quanto no Paper para restauração de inventário e estado de jogo pelo minigame.
+
+### Expiração e Término da Partida
+- Se o tempo configurado em `reconnect-timeout` expirar antes do retorno do jogador, a rotina periódica de sweep do `InMemoryMatchRegistry` transiciona o jogador para `LEFT`, libera a vaga e dispara `MatchParticipantLeftEvent`.
+- Se a partida terminar (`FINISHED` ou `ABORTED`) antes do retorno, todas as vagas pendentes de reconexão daquela partida são invalidadas imediatamente e tentativas posteriores de `/reconnect` são rejeitadas informando que a partida foi finalizada.

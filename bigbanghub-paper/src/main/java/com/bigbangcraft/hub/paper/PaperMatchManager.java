@@ -244,13 +244,13 @@ public final class PaperMatchManager implements MatchManager {
         if (handle != null) {
             if (!handle.state().isTerminal()) {
                 handle.setDisconnected(player.getUniqueId());
-                bridge.sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
+                bridge.send(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
                         MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
                                 handle.matchId(), player.getUniqueId(),
                                 MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.DISCONNECTED)));
             } else {
                 handle.removeParticipant(player.getUniqueId());
-                bridge.sendAny(MessageType.PARTICIPANT_STATE_CHANGE,
+                bridge.send(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
                         MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
                                 handle.matchId(), player.getUniqueId(),
                                 MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.LEFT)));

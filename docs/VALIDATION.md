@@ -1,4 +1,4 @@
-# Relatório de Validação Staging / Live (BigBangHub 0.4.0)
+# Relatório de Validação Staging / Live (BigBangHub 0.4.5)
 
 ## Status da Validação em Ambiente Real
 
@@ -23,7 +23,7 @@ De acordo com as diretrizes operacionais de segurança do projeto BigBangHub:
 
 ## 2. Validação Rigorosa em Test Harness Automatizado
 
-Todas as funcionalidades e invariantes do BigBangHub 0.4.0 foram exaustivamente validadas através de suites de teste automatizadas cobrindo 100% do escopo:
+Todas as funcionalidades e invariantes do BigBangHub 0.4.5 foram exaustivamente validadas através de suites de teste automatizadas cobrindo 100% do escopo:
 
 - **GOAL 04.1 — Fundamentos de Domínio de Party**:
   - `InMemoryPartyServiceTest`: invariantes de liderança, criação, convites, CAS e concorrência.
@@ -45,6 +45,20 @@ Todas as funcionalidades e invariantes do BigBangHub 0.4.0 foram exaustivamente 
   - `PartyAndMatchPerformanceTest`: 1.000 parties simultâneas criadas em ~34ms, latência de matchmaking p99 de 0.11ms (< 5.0ms) e zero vazamento de memória.
 - **GOAL 04.10 — Ambiente de Integração Multi-Servidor**:
   - `FullLifecycleEndToEndIntegrationTest`: ciclo de vida completo executado de ponta a ponta.
+- **HOTFIX 0.4.1 — Bússola + NPC**:
+  - `CompassHotfixRegressionTest`: handlers `LOWEST` sem `ignoreCancelled`, alias bundled.
+  - `AliasCommandRegistrationTest`: alias `/campominado` registrado via Brigadier.
+- **HOTFIX 0.4.3/0.4.4 — Stuck Match + Yank Loop**:
+  - `StuckMatchFixRegressionTest` (10 testes): reconciliação de server-switch, abandono de `DISCONNECTED` no re-queue, `/leave`, abandono em pre-connect voluntário ao Hub com preservação de crash-rejoin.
+- **0.4.5 — Gerenciamento Externo**:
+  - `BundledConfigurationTest`: default `auto-create-match: true` travado (compat live) + `false` parseia (modo externo).
+
+## 3. Validação Live 0.4.4 (2026-09-03, deploy autorizado)
+
+Validado em produção após deploy (`Loaded plugin bigbanghub 0.4.4`, backends `Enabling BigBangHub v0.4.4`):
+- Bússola abre o menu; `/campominado|/bedwars|/hg` sem vermelho; NPCs via `player_command` entram pela fila.
+- `/server <minigame>` direto ainda rejeitado (`DIRECT_JOIN_REJECTED`).
+- `/hub|/lobby|/leave` abandona e fixa no Hub (sem yank); crash mantém reconnect de 60s.
 
 ---
 
@@ -53,12 +67,12 @@ Todas as funcionalidades e invariantes do BigBangHub 0.4.0 foram exaustivamente 
 Quando a janela de manutenção for aprovada pelo operador do servidor Brainiac:
 
 ```bash
-# 1. Compilar artefatos da versão 0.4.0
+# 1. Compilar artefatos da versão 0.4.5
 ./gradlew clean build
 
 # 2. Copiar os artefatos gerados
-cp bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.0-all.jar /caminho/proxy/plugins/
-cp bigbanghub-paper/build/libs/bigbanghub-paper-0.4.0-all.jar /caminho/paper/plugins/
+cp bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.5.jar /caminho/proxy/plugins/
+cp bigbanghub-paper/build/libs/bigbanghub-paper-0.4.5.jar /caminho/paper/plugins/
 
 # 3. Recarregar as configurações ou reiniciar de forma coordenada
 ```

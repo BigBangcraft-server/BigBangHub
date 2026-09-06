@@ -110,6 +110,60 @@ final class VelocityBridge implements PluginMessageListener {
         else Bukkit.getScheduler().runTask(plugin, send);
     }
 
+    /**
+     * Reliable fire-and-forget for quit/kick paths: tries quitting player's connection
+     * first (still valid synchronously inside Quit/Kick event), falls back to any other
+     * online player as carrier. Covers last-player-leaves (no other carrier) as far as
+     * Paper can; Velocity-side reconcileServerSwitch covers total loss.
+     */
+    void sendWithFallback(UUID playerId, MessageType type, byte[] payload) {
+        Runnable send = () -> {
+            byte[] encoded;
+            try {
+                encoded = codec.encode(new ProtocolEnvelope(ProtocolCodec.PROTOCOL_VERSION, type, UUID.randomUUID(), payload));
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Failed to encode plugin message: " + exception.getMessage());
+                return;
+            }
+            Player direct = Bukkit.getPlayer(playerId);
+            if (direct != null && direct.isOnline()) {
+                try {
+                    direct.sendPluginMessage(plugin, channel, encoded);
+                    return;
+                } catch (RuntimeException exception) {
+                    plugin.getLogger().warning("Direct send failed, trying fallback carrier: " + exception.getMessage());
+                }
+            }
+            Player carrier = null;
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.isOnline() && !p.getUniqueId().equals(playerId)) {
+                    carrier = p;
+                    break;
+                }
+            }
+            if (carrier == null) {
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.isOnline()) {
+                        carrier = p;
+                        break;
+                    }
+                }
+            }
+            if (carrier == null || !carrier.isOnline()) {
+                plugin.getLogger().warning("No carrier online to send " + type + " for leaving player " + playerId
+                        + " (Velocity reconcile will cover)");
+                return;
+            }
+            try {
+                carrier.sendPluginMessage(plugin, channel, encoded);
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Fallback send failed: " + exception.getMessage());
+            }
+        };
+        if (Bukkit.isPrimaryThread()) send.run();
+        else Bukkit.getScheduler().runTask(plugin, send);
+    }
+
     @Override
     public void onPluginMessageReceived(String incomingChannel, Player player, byte[] message) {
         if (!channel.equals(incomingChannel)) return;

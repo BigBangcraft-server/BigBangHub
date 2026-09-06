@@ -1,5 +1,5 @@
 name: BigBangHub
-version: '0.4.2'
+version: '0.4.5'
 main: com.bigbangcraft.hub.paper.BigBangHubPaperPlugin
 api-version: '1.21'
 author: BigBangCraft
@@ -47,6 +47,8 @@ permissions:
   bigbanghub.party.admin:
     default: op
   bigbanghub.server.connect:
+    default: op
+  bigbanghub.match.leave:
     default: true
   bigbanghub.bypass.protection:
     default: op

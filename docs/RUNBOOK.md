@@ -18,11 +18,12 @@
    - Once online, Paper sends `INSTANCE_REGISTER` and returns to `HEALTHY` pool.
 
 ### Scenario B: Velocity Proxy Crash / Restart
-1. Restart proxy:
+1. Restart proxy (no tmux — loop `startserver.sh` restarts automatically):
    ```bash
-   ssh ubuntu2 "cd /home/ubuntu/proxy && tmux -S /tmp/tmux_shared new-session -d -s proxy 'sh ./startserver.sh'"
+   ssh ubuntu2 "PID=$(pgrep -o -f 'java.*velocity\.jar'); kill $PID"
    ```
-2. Upon proxy boot, all Paper backends re-register automatically on their next heartbeat pulse (within 3 seconds).
+   Never `pkill -f velocity.jar` inside the same SSH command (it kills your own SSH).
+2. Upon proxy boot, backends re-register on next heartbeat (≤3s); campominado/hg re-appear via `Discovered and registered` (tunnel must be up).
 3. Verify cluster state via console:
    ```text
    bbhub instances
@@ -40,14 +41,21 @@
      server-port=25569
      online-mode=false
      ```
-   - Copy `bigbanghub-paper-0.4.0.jar` into `plugins/`.
+   - Copy `bigbanghub-paper-0.4.4.jar` into `plugins/` (remove any older version jar).
    - In `plugins/BigBangHub/config.yml`:
      ```yaml
-     server-id: "novominigame"
-     role: "MINIGAME"
-     minigame:
-       game: "novominigame"
-       autostart: true
+     server:
+       role: MINIGAME
+       instance:
+         instance-id: novominigame
+         game-id: novominigame
+         server-name: novominigame
+         heartbeat:
+           interval: 3s
+         capacity:
+           min-players: 2
+           max-players: 10
+         accepting-players: true
      ```
 
 2. **Register in Velocity**:
@@ -56,9 +64,11 @@
      [servers]
      novominigame = "10.8.0.2:25569"
      ```
-   - In `ubuntu2:/home/ubuntu/proxy/plugins/BigBangHub/config.yml` (and `servers.yml` / `games.yml`):
-     Add game definition and default matchmaking strategy.
-   - Run `/bbhub reload` in Velocity console.
+     (campominado/hg are the exception: they go through the SSH tunnel as `127.0.0.1:25567/25568` — see PRODUCTION_DEPLOYMENT §5.8.)
+   - In `ubuntu2:/home/ubuntu/proxy/plugins/bigbanghub/` add the game to `games.yml`, the server to `servers.yml`, the alias to `config.yml`, and allowlist in `registry.allowed`.
+   - Add the same alias to the Hub Paper `config.yml` (`hubminigame/plugins/BigBangHub/config.yml`).
+   - If the game gets an NPC: `player_command <alias>`, then `fancynpcs reload` (no restart).
+   - Run `/bbhub reload` in Velocity console (config-only; new jar still needs restart).
 
 ---
 
@@ -71,11 +81,26 @@ If an instance becomes out-of-sync with proxy match registry:
    bbhub reload
    ```
    Sweep task automatically purges expired reservations and orphaned tickets.
-3. If necessary, execute `/bbhub abort <matchId>` to cancel an orphaned match and safely route participants back to Hub.
+3. If necessary, execute `/bbhub match <id> abort` to cancel an orphaned match and safely route participants back to Hub.
 
 ---
 
-## 4. Continuous Health Monitoring
+## 4. Stuck Player ("já possui partida" / yank loop)
+
+1. Ask the player to run `/leave` (or `/hub`): abandons the match and returns to Hub (0.4.3+).
+2. If the player cannot run commands, abort their match (0.4.4 keeps them on Hub afterwards):
+   ```text
+   /bbhub matches
+   /bbhub match <id> abort
+   ```
+3. If NPCs bounce players with "no active admission ticket": the NPC uses `send_to_server` — fix to `player_command` + `fancynpcs reload` (0.4.1+, see MINIGAME_INTEGRATION §5).
+4. If it's a dev/maintenance backend with no integrated minigame yet: put it in
+   maintenance mode instead of fighting matches (`auto-create-match: false` +
+   `accepting-players: false`, game queue off) — see OPERATIONS §5.
+
+---
+
+## 5. Continuous Health Monitoring
 
 Run health check on proxy console:
 ```text

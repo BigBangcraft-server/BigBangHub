@@ -70,6 +70,10 @@ final class ActionExecutor {
     }
 
     private void joinQueue(Player player, GameId gameId) {
+        if (!player.hasPermission("bigbanghub.queue.join")) {
+            player.sendMessage(message("permission-denied", "<red>Você não tem permissão.</red>"));
+            return;
+        }
         if (plugin.parties() != null) {
             java.util.Optional<com.bigbangcraft.hub.api.PartySnapshot> partyOpt = plugin.parties().partyOf(player.getUniqueId());
             if (partyOpt.isPresent()) {

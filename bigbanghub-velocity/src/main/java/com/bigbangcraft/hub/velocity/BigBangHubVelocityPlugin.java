@@ -79,6 +79,7 @@ import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
+import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
@@ -120,7 +121,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.2", authors = {"BigBangCraft"})
+@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.5", authors = {"BigBangCraft"})
 public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final ProxyServer proxy;
     private final Logger logger;
@@ -170,6 +171,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private RematchService rematchService;
     private VelocityExperienceService experienceService;
     private final Map<String, com.velocitypowered.api.command.CommandMeta> aliasMetas = new ConcurrentHashMap<>();
+    private final Map<String, GameId> aliasTargets = new ConcurrentHashMap<>();
 
     @Inject
     public BigBangHubVelocityPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
@@ -205,8 +207,30 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
             proxy.getCommandManager().register(
                     proxy.getCommandManager().metaBuilder("rematch").aliases("revanche").plugin(this).build(),
                     new VelocityRematchCommand(this));
+            // /leave is always ours; /hub and /lobby may be owned by other plugins
+            // (e.g. standalone hub plugin) so register each separately: a conflict on
+            // one alias must not take down the whole leave command.
+            VelocityLeaveCommand leaveCommand = new VelocityLeaveCommand(this);
+            try {
+                proxy.getCommandManager().register(
+                        proxy.getCommandManager().metaBuilder("leave").aliases("sair").plugin(this).build(),
+                        leaveCommand);
+            } catch (IllegalArgumentException alreadyRegistered) {
+                logger.warn("Could not register /leave (already taken by another plugin): {}",
+                        alreadyRegistered.getMessage());
+            }
+            for (String hubAlias : List.of("hub", "lobby")) {
+                try {
+                    proxy.getCommandManager().register(
+                            proxy.getCommandManager().metaBuilder(hubAlias).plugin(this).build(),
+                            leaveCommand);
+                } catch (IllegalArgumentException alreadyRegistered) {
+                    logger.warn("Could not register /{} (already taken by another plugin, voluntary hub transfers are still covered by pre-connect abandon): {}",
+                            hubAlias, alreadyRegistered.getMessage());
+                }
+            }
             syncAliasCommands(snapshot);
-            logger.info("BigBangHub Velocity 0.4.2 enabled with {} games", games().games().size());
+            logger.info("BigBangHub Velocity 0.4.5 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
             proxy.shutdown();
@@ -265,6 +289,41 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         }
     }
 
+    /**
+     * Voluntary hub return must abandon the match BEFORE the transfer, otherwise the
+     * hub arrival looks like a disconnect: reconcile marks DISCONNECTED and
+     * auto-reconnect yanks the player straight back to the minigame
+     * (/hub -> brief hub -> auto "Partida em andamento, reconectando..." loop).
+     * Covers every hub-bound path: /server hub, foreign /hub plugins, /lobby.
+     * Fresh logins (no previous server) are skipped so crash recovery keeps working.
+     */
+    @Subscribe
+    public void onServerPreConnect(ServerPreConnectEvent event) {
+        if (!event.getResult().isAllowed()) return;
+        RegisteredServer target = event.getResult().getServer().orElseGet(event::getOriginalServer);
+        if (target == null) return;
+        String hubName;
+        try {
+            hubName = configSnapshot().proxy().hubServerName();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (!target.getServerInfo().getName().equals(hubName)) return;
+        if (matchRegistry == null) return;
+        Player player = event.getPlayer();
+        // Fresh login (crash rejoin lands on hub via try=[hub]): keep pending reconnect.
+        if (event.getPreviousServer() == null && player.getCurrentServer().isEmpty()) return;
+        UUID playerId = player.getUniqueId();
+        Optional<MatchSnapshot> activeOpt = matchRegistry.findActiveForPlayer(playerId);
+        if (activeOpt.isEmpty()) return;
+        MatchSnapshot active = activeOpt.get();
+        if (active.state().isTerminal()) return;
+        abandonMatch(playerId, "voluntary hub transfer");
+        player.sendPlainMessage("§eVocê saiu da partida.");
+        logger.info("Player {} voluntarily returned to hub; abandoned match {} (no auto-reconnect yank)",
+                player.getUsername(), active.matchId());
+    }
+
     @Subscribe
     public void onServerPostConnect(ServerPostConnectEvent event) {
         Player player = event.getPlayer();
@@ -281,8 +340,47 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         }
         inFlightTransfers.remove(player.getUniqueId());
 
+        // Authoritative Velocity-side reconciliation: backend DISCONNECTED plugin message
+        // is unreliable during /server switches (quitting player's connection is tearing
+        // down, last-player case has no carrier). If player left a match instance without
+        // backend confirmation, mark DISCONNECTED here so /reconnect works and re-queue
+        // no longer contradicts ("já em partida" + "sem partida para reconectar").
+        reconcileServerSwitch(player, event.getPreviousServer(), current);
+
         if (current.getServerInfo().getName().equals(configSnapshot().proxy().hubServerName())) {
             checkAndHandleReconnect(player);
+        }
+    }
+
+    void reconcileServerSwitch(Player player, RegisteredServer previous, ServerConnection current) {
+        if (matchRegistry == null || player == null || current == null) return;
+        UUID playerId = player.getUniqueId();
+        Optional<MatchSnapshot> activeOpt = matchRegistry.findActiveForPlayer(playerId);
+        if (activeOpt.isEmpty()) return;
+        MatchSnapshot active = activeOpt.get();
+        if (active.state().isTerminal()) return;
+        Optional<MatchParticipant> partOpt = matchRegistry.participant(active.matchId(), playerId);
+        if (partOpt.isEmpty()) return;
+        MatchParticipant part = partOpt.get();
+        // Only ACTIVE needs reconciliation; DISCONNECTED already reconnectable.
+        if (part.state() != ParticipantState.ACTIVE) return;
+        String currentName = current.getServerInfo().getName();
+        // Still on match instance -> backend will admit/confirm; nothing to do.
+        if (currentName.equals(active.instanceId().value())) return;
+        // Player not on match server but registry still ACTIVE: backend DISCONNECTED lost
+        // (quitting connection tearing down / last-player no carrier). Mark DISCONNECTED
+        // authoritatively so /reconnect works and re-queue contradiction disappears.
+        Duration reconnectTimeout = configSnapshot().match().reconnectTimeout();
+        Instant now = Instant.now();
+        if (reconnectTimeout.isZero() || reconnectTimeout.isNegative()) {
+            matchRegistry.removePlayer(active.matchId(), playerId, "server switch (no reconnect window)", now);
+            logger.info("Reconciled server switch for {}: removed stale ACTIVE entry in match {} (no reconnect window)",
+                    player.getUsername(), active.matchId());
+        } else {
+            matchRegistry.setPlayerDisconnected(active.matchId(), playerId, now.plus(reconnectTimeout), now);
+            logger.warn("Reconciled server switch for {}: backend DISCONNECTED lost, marked DISCONNECTED in match {} (prev={}, now={})",
+                    player.getUsername(), active.matchId(),
+                    previous != null ? previous.getServerInfo().getName() : "<none>", currentName);
         }
     }
 
@@ -1331,6 +1429,83 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
 
     record QueueValidation(boolean allowed, String message, PartySnapshot party) { }
 
+    /**
+     * Abandons a stale DISCONNECTED match so player can re-queue immediately after
+     * voluntary /lobby without waiting reconnect-timeout. ACTIVE matches still block.
+     * Returns true when a stale entry was abandoned.
+     */
+    boolean tryAbandonStaleMatchForRequeue(UUID playerId) {
+        if (matchRegistry == null) return false;
+        Optional<MatchSnapshot> activeOpt = matchRegistry.findActiveForPlayer(playerId);
+        if (activeOpt.isEmpty()) return false;
+        MatchSnapshot active = activeOpt.get();
+        if (active.state().isTerminal()) return false;
+        Optional<MatchParticipant> partOpt = matchRegistry.participant(active.matchId(), playerId);
+        if (partOpt.isEmpty()) return false;
+        if (partOpt.get().state() != ParticipantState.DISCONNECTED) return false;
+        matchRegistry.removePlayer(active.matchId(), playerId, "abandoned for new queue", Instant.now());
+        if (ticketService != null) ticketService.invalidateForPlayer(playerId);
+        if (reservationService != null) reservationService.cancel(playerId, "abandoned for new queue");
+        if (queues != null) queues.removePlayer(playerId);
+        if (rematchService != null) rematchService.removePlayer(playerId);
+        logger.info("Player {} abandoned stale DISCONNECTED match {} to join new queue", playerId, active.matchId());
+        return true;
+    }
+
+    /** Force-abandons any ACTIVE or DISCONNECTED match (explicit /leave). Returns match or empty. */
+    Optional<MatchSnapshot> abandonMatch(UUID playerId, String reason) {
+        if (matchRegistry == null) return Optional.empty();
+        Optional<MatchSnapshot> activeOpt = matchRegistry.findActiveForPlayer(playerId);
+        if (activeOpt.isEmpty()) return Optional.empty();
+        MatchSnapshot active = activeOpt.get();
+        matchRegistry.removePlayer(active.matchId(), playerId, reason, Instant.now());
+        if (ticketService != null) ticketService.invalidateForPlayer(playerId);
+        if (reservationService != null) reservationService.cancel(playerId, reason);
+        if (queues != null) queues.removePlayer(playerId);
+        if (rematchService != null) rematchService.removePlayer(playerId);
+        if (partyService != null) {
+            partyService.partyOf(playerId).ifPresent(party -> {
+                if (party.state() == PartyState.IN_MATCH || party.state() == PartyState.ASSIGNED) {
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                }
+            });
+        }
+        inFlightTransfers.remove(playerId);
+        logger.info("Player {} left match {} ({})", playerId, active.matchId(), reason);
+        return Optional.of(active);
+    }
+
+    /**
+     * Explicit /leave|/hub|/lobby: abandons match if any, leaves queue, returns to hub.
+     * Never leaves player in contradictory "já em partida + sem partida" state.
+     */
+    public boolean leaveMatch(Player player) {
+        UUID playerId = player.getUniqueId();
+        Optional<MatchSnapshot> abandoned = abandonMatch(playerId, "player left");
+        // Always leave queue too (covers Queued 0 vs preso confusion: /queue leave said
+        // "não está em fila" while match blocked re-queue).
+        if (queues != null) queues.removePlayer(playerId);
+        if (partyService != null) {
+            partyService.partyOf(playerId).ifPresent(party -> {
+                if (party.state() == PartyState.QUEUED && party.isLeader(playerId)) {
+                    partyService.transitionState(party.partyId(), PartyState.IDLE);
+                }
+            });
+        }
+        String hubName = configSnapshot().proxy().hubServerName();
+        String currentName = player.getCurrentServer().map(c -> c.getServerInfo().getName()).orElse("");
+        if (currentName.equals(hubName)) {
+            if (abandoned.isPresent()) player.sendPlainMessage("§aVocê saiu da partida. Use /campominado para jogar novamente.");
+            else player.sendPlainMessage("§7Você já está no Hub e não está em partida.");
+            return abandoned.isPresent();
+        }
+        safeReturnPlayerToHub(playerId, ReturnReason.PLAYER_LEFT,
+                abandoned.isPresent() ? "Player left match" : "Player returned to hub");
+        if (abandoned.isPresent()) player.sendPlainMessage("§aVocê saiu da partida e está retornando ao Hub.");
+        else player.sendPlainMessage("§aRetornando ao Hub...");
+        return true;
+    }
+
     private QueueValidation validateQueueJoin(UUID playerId, GameId gameId) {
         if (!games().find(gameId).map(g -> g.enabled() && g.queueEnabled()).orElse(false)) {
             return new QueueValidation(false, "Este minigame está temporariamente indisponível.", null);
@@ -1350,8 +1525,20 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                     if (m == null || !m.isActive()) {
                         return new QueueValidation(false, "Não é possível entrar na fila: todos os membros da party devem estar online.", null);
                     }
-                    if (inFlightTransfers.contains(memberId) || matchRegistry.findActiveForPlayer(memberId).isPresent()) {
+                    if (inFlightTransfers.contains(memberId)) {
                         return new QueueValidation(false, "Não é possível entrar na fila: há membros da party em partida ou transição.", null);
+                    }
+                    Optional<MatchSnapshot> memberActive = matchRegistry.findActiveForPlayer(memberId);
+                    if (memberActive.isPresent()) {
+                        Optional<MatchParticipant> mp = matchRegistry.participant(memberActive.get().matchId(), memberId);
+                        if (mp.isPresent() && mp.get().state() == ParticipantState.DISCONNECTED) {
+                            // Stale reconnect slot from voluntary /lobby: abandon so party can re-queue.
+                            abandonMatch(memberId, "abandoned for party re-queue");
+                            proxy.getPlayer(memberId).ifPresent(p ->
+                                    p.sendPlainMessage("§eSua partida anterior foi abandonada para entrar na fila com a party."));
+                        } else {
+                            return new QueueValidation(false, "Não é possível entrar na fila: há membros da party em partida ou transição.", null);
+                        }
                     }
                 }
                 return new QueueValidation(true, "OK", party);
@@ -1364,7 +1551,13 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     }
 
     void join(Player player, GameId game) {
-        QueueValidation validation = validateQueueJoin(player.getUniqueId(), game);
+        UUID pid = player.getUniqueId();
+        // Auto-abandon stale DISCONNECTED so /campominado right after /lobby works.
+        // ACTIVE still blocks (must /leave first). Fixes "já possui partida" preso.
+        if (tryAbandonStaleMatchForRequeue(pid)) {
+            player.sendPlainMessage("§eSua partida anterior foi abandonada.");
+        }
+        QueueValidation validation = validateQueueJoin(pid, game);
         if (!validation.allowed()) {
             player.sendPlainMessage(validation.message());
             return;
@@ -1644,6 +1837,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         try {
             MessagePayloads.QueueJoin request = MessagePayloads.queueJoin(envelope.payload());
             if (!player.getUniqueId().equals(request.playerId())) { rejectIdentity(connection, envelope, player); return; }
+            tryAbandonStaleMatchForRequeue(player.getUniqueId());
             QueueValidation validation = validateQueueJoin(player.getUniqueId(), request.gameId());
             if (!validation.allowed()) {
                 sendQueueResponse(connection, envelope, QueueResult.of(
@@ -1709,6 +1903,13 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         try {
             MessagePayloads.ServerConnect request = MessagePayloads.serverConnect(envelope.payload());
             if (!player.getUniqueId().equals(request.playerId())) { rejectIdentity(connection, envelope, player); return; }
+            // Harden direct backend transfers: no public menu/compass/NPC may use SERVER action.
+            // Canonical entry is Queue->Routing->Reservation->Ticket->Transfer; SERVER requires explicit grant.
+            if (!player.hasPermission("bigbanghub.server.connect")) {
+                sendServerResponse(connection, envelope, player.getUniqueId(), false, "Você não tem permissão.");
+                logger.warn("Rejected SERVER_CONNECT from {} without bigbanghub.server.connect", player.getUsername());
+                return;
+            }
             if (servers().find(request.serverId()).isEmpty() && instanceRegistry.find(request.serverId()).isEmpty()) {
                 sendServerResponse(connection, envelope, player.getUniqueId(), false, "Servidor não permitido.");
                 return;
@@ -1882,20 +2083,29 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
         for (String existing : new HashSet<>(aliasMetas.keySet())) {
             if (!snapshot.aliases().containsKey(existing)) {
                 com.velocitypowered.api.command.CommandMeta meta = aliasMetas.remove(existing);
+                aliasTargets.remove(existing);
                 if (meta != null) proxy.getCommandManager().unregister(meta);
             }
         }
-        // Register or update aliases
+        // Register or update aliases (re-register when game mapping changes)
         for (Map.Entry<String, String> entry : snapshot.aliases().entrySet()) {
             String alias = entry.getKey();
             String gameVal = entry.getValue();
-            if (aliasMetas.containsKey(alias)) continue;
             try {
                 GameId gameId = GameId.of(gameVal);
+                GameId current = aliasTargets.get(alias);
+                if (current != null && current.equals(gameId) && aliasMetas.containsKey(alias)) continue;
+                // Mapping changed: unregister old Brigadier node before re-registering
+                if (aliasMetas.containsKey(alias)) {
+                    com.velocitypowered.api.command.CommandMeta old = aliasMetas.remove(alias);
+                    if (old != null) proxy.getCommandManager().unregister(old);
+                    aliasTargets.remove(alias);
+                }
                 com.velocitypowered.api.command.CommandMeta meta = proxy.getCommandManager()
                         .metaBuilder(alias).plugin(this).build();
                 proxy.getCommandManager().register(meta, new VelocityAliasCommand(this, gameId));
                 aliasMetas.put(alias, meta);
+                aliasTargets.put(alias, gameId);
                 logger.info("Registered alias command /{} -> queue join {}", alias, gameVal);
             } catch (IllegalArgumentException ex) {
                 logger.warn("Ignoring invalid alias {} -> {}: {}", alias, gameVal, ex.getMessage());

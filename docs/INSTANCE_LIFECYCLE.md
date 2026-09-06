@@ -1,6 +1,6 @@
-# Ciclo de Vida de Instâncias, Liveness e Reservas (BigBangHub 0.3.0)
+# Ciclo de Vida de Instâncias, Liveness e Reservas (BigBangHub 0.4.4)
 
-O **BigBangHub 0.3.0** introduz uma infraestrutura completa de **Runtime Instance Registry**, **Liveness Tracking com Heartbeats**, **Slot Reservations transitórias**, **Ciclo de Vida Padronizado de Partidas** e **Roteamento Resiliente Orientado a Eventos** para a rede BigBangCraft.
+O BigBangHub mantém uma infraestrutura completa de **Runtime Instance Registry**, **Liveness Tracking com Heartbeats**, **Slot Reservations transitórias**, **Ciclo de Vida Padronizado de Partidas** e **Roteamento Resiliente Orientado a Eventos** para a rede BigBangCraft.
 
 ---
 
@@ -167,7 +167,7 @@ Para desenvolvedores de minigames (como Campo Minado, BedWars, HG):
 
 ## 7. Relação com o Ciclo de Vida de Partidas (Match Lifecycle)
 
-Uma instância de minigame executa sessões de partidas controladas pelo contrato `MatchHandle` (BigBangHub 0.3.0).
+Uma instância de minigame executa sessões de partidas controladas pelo contrato `MatchHandle` (BigBangHub 0.4.4).
 Quando a partida encerra (`FINISHED` ou `ABORTED`), os jogadores são retornados com segurança ao Hub e a instância entra na fase de limpeza da arena.
 
 Para evitar que novos jogadores entrem enquanto blocos ou entidades ainda estão sendo restaurados:

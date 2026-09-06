@@ -1,4 +1,4 @@
-# Protocolo Paper ↔ Velocity (BigBangHub 0.3.0)
+# Protocolo Paper ↔ Velocity (BigBangHub 0.4.4)
 
 - **Canal Minecraft**: `bigbanghub:main`.
 - **Versão**: `1` e `2`.
@@ -14,7 +14,7 @@ Todos os números inteiros usam big-endian (`DataInputStream` / `DataOutputStrea
 ```text
 magic             int       0x42424831 (ASCII "BBH1")
 protocolVersion   u8        1 ou 2
-messageType       u8        código da mensagem (1..23)
+messageType       u8        código da mensagem (1..34)
 correlationId     16 bytes  UUID (dois longs em sequência)
 payloadLength     int       0..16384
 payload           bytes     dados da mensagem
@@ -53,6 +53,17 @@ A assinatura HMAC-SHA256 é calculada caso `BIGBANGHUB_MESSAGE_SECRET` esteja co
 | 21 | `MATCH_ABORT` | Minigame → Velocity | String instanceId, UUID sessionId, String matchId, Long revision, String motivo |
 | 22 | `INSTANCE_READY` | Minigame → Velocity | String instanceId, UUID sessionId, String matchId |
 | 23 | `PLAYER_RETURN` | Minigame/Velocity | UUID playerId, u8 motivo, String mensagem |
+| 24 | `PARTY_CREATE` | Paper → Velocity | UUID leaderId |
+| 25 | `PARTY_INVITE` | Paper → Velocity | UUID actorId, UUID targetId, String targetName |
+| 26 | `PARTY_ACCEPT` | Paper → Velocity | UUID playerId, PartyId? |
+| 27 | `PARTY_DECLINE` | Paper → Velocity | UUID playerId, PartyId? |
+| 28 | `PARTY_LEAVE` | Paper → Velocity | UUID playerId |
+| 29 | `PARTY_KICK` | Paper → Velocity | UUID actorId, UUID targetId |
+| 30 | `PARTY_LEADER_CHANGE` | Paper → Velocity | UUID actorId, UUID newLeaderId |
+| 31 | `PARTY_DISBAND` | Paper → Velocity | UUID actorId, UUID partyId |
+| 32 | `PARTY_SYNC` | Velocity → Paper | Snapshot da party |
+| 33 | `PARTY_RESPONSE` | Velocity → Paper | UUID playerId, Bool sucesso, String mensagem, PartyId? |
+| 34 | `PARTY_WARP` | Paper → Velocity | UUID leaderId |
 
 ---
 

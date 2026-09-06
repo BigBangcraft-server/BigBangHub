@@ -1,4 +1,4 @@
-# Arquitetura (BigBangHub 0.3.0)
+# Arquitetura (BigBangHub 0.4.4)
 
 ```text
 Player
@@ -37,7 +37,7 @@ Player
   - `AdmissionTicketService`: Emissor e validador de ingressos de uso único com TTL para prevenção de conexões diretas.
   - `MatchEventBus`: Barramento concorrente e isolado de eventos de partidas.
   - `InMemoryInstanceRegistry`, `InMemoryReservationService`, `InMemoryQueueService`.
-  - `ProtocolCodec` e `MessagePayloads`: Serialização binária em envelopes `BBH1` (mensagens 1 a 23) com suporte a HMAC-SHA256.
+  - `ProtocolCodec` e `MessagePayloads`: Serialização binária em envelopes `BBH1` (mensagens 1 a 34) com suporte a HMAC-SHA256.
   - `ConfigLoader`: Carregamento estrito com snapshots imutáveis.
 - **`bigbanghub-velocity`**: Orquestrador global de partidas e rede.
   - Roteia jogadores da fila priorizando partidas abertas com capacidade (`FILL_EXISTING_MATCH`).

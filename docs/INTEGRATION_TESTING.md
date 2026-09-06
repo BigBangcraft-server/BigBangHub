@@ -1,4 +1,4 @@
-# Ambiente de Testes de Integração Multi-Servidor (BigBangHub 0.4.0)
+# Ambiente de Testes de Integração Multi-Servidor (BigBangHub 0.4.4)
 
 Este documento descreve a arquitetura de testes de integração automatizados simulando ponta a ponta o ciclo de vida completo de parties, filas em grupo, admissão de tickets, desconexão/reconexão e votação de revanche.
 

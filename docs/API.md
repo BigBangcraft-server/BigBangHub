@@ -1,6 +1,6 @@
-# API de Integração (BigBangHub 0.3.0)
+# API de Integração (BigBangHub 0.4.4)
 
-`bigbanghub-api` é o contrato público versionado como parte de `0.3.0`.
+`bigbanghub-api` é o contrato público versionado como parte de `0.4.4`.
 Integrações no mesmo build usam:
 
 ```groovy
@@ -12,7 +12,7 @@ Para um consumidor externo, publique o módulo com
 
 ```groovy
 repositories { mavenLocal() }
-dependencies { implementation 'com.bigbangcraft:bigbanghub-api:0.3.0' }
+dependencies { implementation 'com.bigbangcraft:bigbanghub-api:0.4.4' }
 ```
 
 ---

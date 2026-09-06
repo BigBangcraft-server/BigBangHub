@@ -1,6 +1,6 @@
 # BigBangHub — Real Production Network Inventory & Post-Deployment Audit
 
-Updated: 2026-09-02 — Phase 05 Live Deployment Validation
+Updated: 2026-09-04 — 0.4.5 Live Deployment Validation
 
 ## 1. Physical & Virtual Nodes
 
@@ -9,8 +9,9 @@ Updated: 2026-09-02 — Phase 05 Live Deployment Validation
 - **WireGuard IP**: `10.8.0.1` (`wg0`)
 - **OS**: Linux 6.8.0-64-generic (Ubuntu 24.04 LTS x86_64)
 - **Active Roles**:
-  - Velocity Proxy 3.4.0-SNAPSHOT (`0.0.0.0:25565`)
-  - BigBangHub Velocity Plugin `0.4.0` (active)
+  - Velocity Proxy 3.4.0-SNAPSHOT (`0.0.0.0:25565`, no tmux — `startserver.sh` loop)
+  - BigBangHub Velocity Plugin `0.4.5` (active)
+  - SSH tunnel `start_tunnel.sh`: `127.0.0.1:25567/25568` → `10.8.0.2:25567/25568` (campominado/hg)
   - SimpleVoiceChat Proxy (`0.0.0.0:24454/udp`)
   - nLogin Authenticator & SkinsRestorer
 
@@ -18,11 +19,12 @@ Updated: 2026-09-02 — Phase 05 Live Deployment Validation
 - **WireGuard IP**: `10.8.0.2` (`wg0`)
 - **Internal LAN**: `192.168.0.20`
 - **OS**: Linux 6.8.0-60-generic (Ubuntu 24.04 LTS x86_64)
-- **Active Paper Instances (all bound strictly to `10.8.0.2`)**:
-  - `hubminigame`: Paper 1.21.4 (`10.8.0.2:25565`) — Role: `HUB` — BigBangHub Paper `0.4.0`
-  - `bedwars`: Paper 1.21.4 (`10.8.0.2:25566`) — Role: `MINIGAME` (`bedwars`) — BigBangHub Paper `0.4.0`
-  - `campominado`: Paper 1.21.4 (`10.8.0.2:25567`) — Role: `MINIGAME` (`campominado`) — BigBangHub Paper `0.4.0`
-  - `hg`: Paper 1.21.4 (`10.8.0.2:25568`) — Role: `MINIGAME` (`hg`) — BigBangHub Paper `0.4.0`
+- **Active Paper Instances (tmux `/tmp/tmux_shared`, auto-restart loops)**:
+  - `hubminigame`: Paper 1.21.4 (`10.8.0.2:25565`) — Role: `HUB` — BigBangHub Paper `0.4.5`
+  - `bedwars`: Paper 1.21.4 (`10.8.0.2:25566`, dir `minigames/bedward`) — Role: `MINIGAME` (`bedwars`) — BigBangHub Paper `0.4.5`
+  - `campominado`: Paper 1.21.4 (`10.8.0.2:25567`) — Role: `MINIGAME` (`campominado`, `BigBangMinefield-1.0.0.jar`) — BigBangHub Paper `0.4.5`
+  - `hg`: Paper 1.21.4 (`10.8.0.2:25568`) — Role: `MINIGAME` (`hg`) — BigBangHub Paper `0.4.5`
+- **Hub entry points**: compass, `/queue join`, Brigadier aliases `/campominado /bedwars /hg`, FancyNpcs (`player_command`, never `send_to_server`)
 
 ---
 
@@ -51,3 +53,6 @@ Updated: 2026-09-02 — Phase 05 Live Deployment Validation
 - [x] Play Again & Rematch Flow Handling
 - [x] Strict Network Boundary Security & Command Permissions
 - [x] Rollback & Re-Deploy Verification
+- [x] Brigadier Entry Aliases (`/campominado`, `/bedwars`, `/hg`) + NPC Queue Admission (0.4.1)
+- [x] Stuck-Match Reconciliation & Explicit `/leave` (0.4.3)
+- [x] Voluntary Hub-Return Abandon, No Yank Loop (0.4.5)

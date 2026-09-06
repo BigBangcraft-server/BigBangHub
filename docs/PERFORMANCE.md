@@ -1,4 +1,4 @@
-# Validação de Performance e Memória (BigBangHub 0.4.0)
+# Validação de Performance e Memória (BigBangHub 0.4.4)
 
 Este documento detalha os benchmarks de carga, medições de latência de matchmaking, estratégias de limpeza por sweeper e testes de vazamento de memória para o subsistema de Party, Matchmaking em Grupo, Reconnect e Rematch.
 

@@ -1,4 +1,4 @@
-# Operações (BigBangHub 0.3.0)
+# Operações (BigBangHub 0.4.5)
 
 ## 1. Build e Artefatos
 
@@ -12,10 +12,10 @@ git diff --check
 Os artefatos gerados são:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.3.0.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.3.0.jar
-bigbanghub-api/build/libs/bigbanghub-api-0.3.0.jar
-bigbanghub-common/build/libs/bigbanghub-common-0.3.0.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.4.5.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.5.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.4.5.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.4.5.jar
 ```
 
 ---
@@ -24,29 +24,33 @@ bigbanghub-common/build/libs/bigbanghub-common-0.3.0.jar
 
 ### No Proxy Velocity (`ubuntu2` - 10.8.0.1):
 ```text
-/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.3.0.jar
+/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.4.5.jar
 ```
 
 ### No Servidor Hub (`brainiac` - 10.8.0.2):
 ```text
-/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.3.0.jar
+/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.4.5.jar
 ```
 No `config.yml`: `server.role: HUB`
 
 ### Nos Servidores de Minigame (`brainiac` - 10.8.0.2):
-- BedWars: `/home/brainiac/bigbangcraft/bedward/plugins/bigbanghub-paper-0.3.0.jar`
-- Campo Minado: `/home/brainiac/bigbangcraft/campominado/plugins/bigbanghub-paper-0.3.0.jar`
-- HG: `/home/brainiac/bigbangcraft/hg/plugins/bigbanghub-paper-0.3.0.jar`
+- BedWars: `/home/brainiac/bigbangcraft/minigames/bedward/plugins/bigbanghub-paper-0.4.5.jar` (pasta `bedward`, sem "s")
+- Campo Minado: `/home/brainiac/bigbangcraft/minigames/campominado/plugins/bigbanghub-paper-0.4.5.jar`
+- HG: `/home/brainiac/bigbangcraft/minigames/hg/plugins/bigbanghub-paper-0.4.5.jar`
 
-No `config.yml` de cada minigame:
+No `config.yml` de cada minigame (valores live):
 ```yaml
 server:
   role: MINIGAME
   instance:
-    instance-id: campominado-01 # (ou bedwars-01, hg-01)
-    game-id: campominado        # (ou bedwars, hg)
-    server-name: campominado-01
+    instance-id: campominado # (ou bedwars, hg — igual ao velocity.toml)
+    game-id: campominado      # (ou bedwars, hg)
+    server-name: campominado  # igual ao instance-id
 ```
+
+> Nunca mantenha dois jars de versão no mesmo `plugins/` (carregam duas vezes).
+> Backups versionados ficam em `~/backups/bigbanghub_<versão>_<data>` (brainiac) e
+> `~/backup/bigbanghub_<versão>_<data>` (ubuntu2).
 
 *Atenção: NÃO reinicie nem modifique servidores de produção sem janela controlada de manutenção.*
 
@@ -138,10 +142,37 @@ Exibe contadores acumulados de telemetria:
 | `bigbanghub.admin.match.abort` | Abortar forçadamente uma partida (`/bbhub match <id> abort`) | op |
 | `bigbanghub.admin.player.return` | Retornar forçadamente jogador ao Hub (`/bbhub return <player>`) | op |
 | `bigbanghub.reload` | Recarregar arquivos de configuração (`/bbhub reload`) | op |
+| `bigbanghub.queue.join` | Entrar na fila e usar aliases (`/campominado`, NPC, bússola) | true |
+| `bigbanghub.match.leave` | Abandonar partida (`/leave`, `/hub`, `/lobby`, `/sair`) | true |
+| `bigbanghub.server.connect` | Ação `SERVER` direta em menus (não dar a jogadores) | op |
 
 ---
 
-## 5. Diagnóstico Rápido
+## 5. Modo Manutenção de Minigame (desenvolvimento sem partidas)
+
+Para desenvolver o plugin do minigame (ou manter o servidor) sem o Hub presumir partidas:
+
+```bash
+# 1. brainiac: backend fora da fila e sem auto-partida
+# plugins/BigBangHub/config.yml do minigame:
+#   match.auto-create-match: false
+#   server.instance.accepting-players: false
+tmux -S /tmp/tmux_shared send-keys -t campominado 'stop' Enter  # sobe sozinho ~15s
+
+# 2. ubuntu2: fila do jogo responde "indisponível" em vez de prender jogador
+# proxy/plugins/bigbanghub/games.yml: campominado.queue.enabled: false
+PID=$(pgrep -o -f 'java.*velocity\.jar'); kill $PID  # sobe sozinho ~15s
+
+# 3. hub: mesma flag + reload sem restart
+tmux -S /tmp/tmux_shared send-keys -t hubminigame 'bbhub reload' Enter
+```
+
+Retorno à produção: reverter as 3 flags, restart do backend, reloads. Detalhes e o
+modo survival (`role: GENERIC`) em `MINIGAME_INTEGRATION.md` §§6 e 10.
+
+---
+
+## 6. Diagnóstico Rápido
 
 | Sintoma | Causa Mais Provável | Ação Recomendada |
 |---|---|---|
@@ -151,3 +182,8 @@ Exibe contadores acumulados de telemetria:
 | Partida travada em `IN_GAME` | Minigame não disparou evento de finish/abort | Inspecionar com `/bbhub match <id>` e executar `/bbhub match <id> abort` se necessário. |
 | Instância não aceita nova partida | Limpeza pendente (`markReady` não chamado) | O minigame ainda está executando reset de arena ou o cleanup falhou. |
 | Fila parada com jogadores | Partidas em andamento cheias ou sem capacidade | Conferir `/bbhub matches` para checar capacidade e estado das sessões. |
+| "Já possui partida" + "sem partida p/ reconectar" | Versão < 0.4.3 (DISCONNECTED perdido no `/server`) | Atualizar para 0.4.3+; paliativo: `/bbhub match <id> abort` |
+| `/hub` volta ao minigame (loop) | Versão < 0.4.4 (auto-reconnect puxa saída voluntária) | Atualizar proxy para 0.4.4+ |
+| NPC expulsa "no active admission ticket" | NPC com `send_to_server` | Trocar para `player_command` + `fancynpcs reload` (nunca só editar: restart reverte!) |
+| `/campominado` vermelho no chat | Alias sem registro Brigadier (< 0.4.1) ou sem alias no `config.yml` | Atualizar para 0.4.1+ e conferir os 3 aliases no proxy e no Hub |
+| `campominado`/`hg` inalcançáveis do proxy | Túnel SSH `127.0.0.1:25567/25568` caído (`start_tunnel.sh`) | Reiniciar túnel; `ss -ltn \| grep 2556` deve listar as portas |

@@ -160,6 +160,15 @@ public final class PaperMatchManager implements MatchManager {
     public void handlePlayerJoin(Player player) {
         PaperMatchHandle handle = currentMatch.get();
         if (handle == null) {
+            if (!autoCreateMatch) {
+                // Externally managed: the minigame plugin owns match creation via API
+                // (auto-create off) and nobody opened a match yet. The Hub must not
+                // assume a match: let the player stay free (dev / maintenance /
+                // pre-open lobby). No ticket, no tracking, no bounce.
+                plugin.getLogger().info("No open match (external management); letting "
+                        + player.getName() + " stay free.");
+                return;
+            }
             player.sendMessage("§cNenhuma partida aberta no momento. Retornando ao Hub...");
             transfers.returnToHub(player.getUniqueId(), ReturnReason.DIRECT_JOIN_REJECTED, "No active match on server")
                     .thenAccept(res -> {
@@ -242,15 +251,23 @@ public final class PaperMatchManager implements MatchManager {
     public void handlePlayerQuit(Player player) {
         PaperMatchHandle handle = currentMatch.get();
         if (handle != null) {
+            // Only signal players the Hub actually tracks. Free-stay players
+            // (external management, never admitted) must not pollute the proxy
+            // with phantom DISCONNECTED/LEFT states.
+            Optional<MatchParticipant> tracked = handle.participant(player.getUniqueId());
+            if (tracked.isEmpty()) return;
             if (!handle.state().isTerminal()) {
+                // Idempotent: Kick+Quit both fire on /server switch; second call is no-op.
+                Optional<MatchParticipant> existing = handle.participant(player.getUniqueId());
+                if (existing.isPresent() && existing.get().state() == ParticipantState.DISCONNECTED) return;
                 handle.setDisconnected(player.getUniqueId());
-                bridge.send(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
+                bridge.sendWithFallback(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
                         MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
                                 handle.matchId(), player.getUniqueId(),
                                 MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.DISCONNECTED)));
             } else {
                 handle.removeParticipant(player.getUniqueId());
-                bridge.send(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
+                bridge.sendWithFallback(player.getUniqueId(), MessageType.PARTICIPANT_STATE_CHANGE,
                         MessagePayloads.participantStateChange(new MessagePayloads.ParticipantStateChange(
                                 handle.matchId(), player.getUniqueId(),
                                 MessagePayloads.ParticipantRoleWire.PLAYER, MessagePayloads.ParticipantStateWire.LEFT)));

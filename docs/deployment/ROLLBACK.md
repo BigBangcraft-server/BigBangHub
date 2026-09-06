@@ -1,6 +1,33 @@
 # BigBangCraft Rollback & Disaster Recovery Procedures
 
-This document provides exact operational procedures to revert BigBangHub deployment to the pre-0.4.0 baseline across the BigBangCraft network.
+This document provides exact operational procedures to revert BigBangHub deployment across the BigBangCraft network. The pre-0.4.0 full baseline is kept at the bottom; for recent versions use the per-release backups.
+
+---
+
+## 0. Rollback Rápido Entre Versões (0.4.x)
+
+Every 0.4.x deploy archives versioned backups:
+- `ubuntu2:~/backup/bigbanghub_<versão>_<data>/` (velocity jar + proxy `config.yml` + `velocity.toml`)
+- `brainiac:~/backups/bigbanghub_<versão>_<data>/` (4 paper jars + hub `config.yml` + `npcs.yml`)
+
+Example 0.4.4 → 0.4.3:
+```bash
+# ubuntu2 (proxy): kill restarts automatically via startserver.sh loop
+cp ~/backup/bigbanghub_0.4.3_*/bigbanghub-velocity-0.4.3.jar ~/proxy/plugins/
+rm ~/proxy/plugins/bigbanghub-velocity-0.4.4.jar
+PID=$(pgrep -o -f 'java.*velocity\.jar'); kill $PID
+
+# brainiac (each backend, staggered): stop restarts automatically via startserver.sh loop
+cp ~/backups/bigbanghub_0.4.3_*/bigbanghub-paper-0.4.3.jar ~/bigbangcraft/hubminigame/plugins/
+rm ~/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.4.4.jar
+tmux -S /tmp/tmux_shared send-keys -t hubminigame 'stop' Enter
+# repeat for bedwars, campominado, hg
+```
+
+> NPC warning: FancyNpcs persists `npcs.yml` on shutdown. After restoring an
+> `npcs.yml`, run `fancynpcs reload` on the Hub console **without restarting**,
+> or the restored values get overwritten by the running state. Verify with
+> `grep -c player_command .../FancyNpcs/npcs.yml` (expect 3, `send_to_server` 0).
 
 ---
 
@@ -51,23 +78,19 @@ This document provides exact operational procedures to revert BigBangHub deploym
 ## 2. Step-by-Step Rollback Execution
 
 ### 2.1. Velocity Rollback (`ubuntu2`)
-Execute via SSH on `ubuntu2`:
+Execute via SSH on `ubuntu2` (proxy has no tmux — `startserver.sh` loop restarts it):
 ```bash
-# 1. Stop Velocity proxy
-tmux -S /tmp/tmux_shared send-keys -t proxy "end" Enter
+# 1. Kill Velocity (loop restarts in ~10s; never pkill inside the same SSH one-liner pattern carelessly)
+PID=$(pgrep -o -f 'java.*velocity\.jar'); kill $PID
 
-# 2. Wait 3 seconds for process termination
-sleep 3
+# 2. While it restarts, swap jars (never two version jars together)
+rm -f /home/ubuntu/proxy/plugins/bigbanghub-velocity*.jar
+cp /home/ubuntu/backup/bigbanghub_0.4.3_*/bigbanghub-velocity-0.4.3.jar /home/ubuntu/proxy/plugins/
 
-# 3. Remove BigBangHub plugin and data folder
+# 3. To fully remove BigBangHub and restore pre-0.4.0 baseline:
 rm -f /home/ubuntu/proxy/plugins/bigbanghub-velocity*.jar
 rm -rf /home/ubuntu/proxy/plugins/bigbanghub
-
-# 4. Restore previous plugins and configuration from backup
 cp -a /home/ubuntu/backups/bigbanghub-pre-0.4-live/velocity.toml /home/ubuntu/proxy/velocity.toml
-
-# (If startserver.sh loop didn't auto-restart, launch via start_tmux.sh)
-/home/ubuntu/proxy/start_tmux.sh
 ```
 
 ### 2.2. Hub Rollback (`hubminigame` on `brainiac`)

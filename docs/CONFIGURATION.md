@@ -1,4 +1,4 @@
-# Configuração (BigBangHub 0.3.0)
+# Configuração (BigBangHub 0.4.4)
 
 O BigBangHub carrega `config.yml`, `menus.yml`, `games.yml`, `servers.yml` e `messages.yml` da pasta de dados do plugin tanto no Paper quanto no Velocity.
 
@@ -12,6 +12,13 @@ No Paper, defina a responsabilidade do processo:
 server:
   role: HUB # Opções: HUB, MINIGAME, GENERIC
 ```
+
+- `HUB`: lobby principal (bússola, menus, proteções, `/queue`).
+- `MINIGAME`: backend de minigame com agente de instância + gerenciador de partidas.
+  Com `auto-create-match: false` e nenhuma partida aberta, entradas ficam livres
+  (gerenciamento externo via API — ver MINIGAME_INTEGRATION §6).
+- `GENERIC` (padrão se omitido): sem lobby, sem instância, sem partidas. Entrada
+  livre total — o papel para survival, criativo e eventos.
 
 ### Configuração de Minigame Agent (`role: MINIGAME`):
 Quando um servidor roda como minigame (ex: Campo Minado, BedWars, HG), configure o bloco `instance`:
@@ -44,14 +51,19 @@ match:
   admission-timeout: 10s   # TTL do ticket criptográfico de admissão de jogadores
   return-timeout: 10s      # Tempo limite para transferências de retorno ao Hub
   finished-retention: 60s  # Retenção de tombstones de partidas encerradas para consulta
-  auto-create-match: true  # Se true, cria e abre partidas automaticamente no boot e pós-cleanup
+  auto-create-match: true  # Se true, cria e abre partidas automaticamente no boot e pós-cleanup.
+                           # Se false, o minigame cria via API; sem partida aberta, entradas ficam livres (0.4.5)
   reconnect-timeout: 60s   # Janela de tolerância para desconexão e recuperação de sessão
-  auto-reconnect: true     # Reconecta automaticamente à partida ao reentrar no Hub
+  auto-reconnect: true     # Reconecta automaticamente à partida ao reentrar no Hub (só crash; saída voluntária abandona desde 0.4.4)
   post-match-timeout: 15s  # Janela de decisão pós-jogo para /playagain e /rematch antes de retorno ao Hub
 
 spectator:
   enabled: true            # Permite o ingresso e transição de jogadores para espectadores
 ```
+
+> Desde 0.3.0 sem mudanças de chave; em 0.4.x o significado de `auto-reconnect`
+> foi refinado: vale para retorno após queda. Saída voluntária (`/leave`, `/hub`,
+> `/lobby`, `/server hub`) abandona a partida em vez de segurar slot.
 
 ---
 
@@ -131,9 +143,50 @@ servers:
     max-players: 10
 ```
 
+> `servers.yml` é bootstrap: após o agente Paper registrar via `INSTANCE_REGISTER`,
+> o registro dinâmico prevalece. Não precisa listar cada instância (`-01`, `-02`).
+
 ---
 
-## 6. Bússola e Menus (`menus.yml`)
+## 6. Aliases de entrada: `/campominado`, `/bedwars`, `/hg` (`config.yml`)
+
+Os três aliases abaixo são **obrigatórios** (proxy e Hub Paper). Sem eles, o comando
+fica vermelho no Brigadier e o NPC não tem para onde apontar:
+
+```yaml
+aliases:
+  campominado: campominado
+  bedwars: bedwars
+  hg: hg
+```
+
+Cada alias converge para o mesmo ponto canônico (`QueueService → Routing →
+Reservation → AdmissionTicket → Transfer`). NPCs usam `player_command <alias>`.
+
+---
+
+## 7. Comandos de jogador e permissões (0.4.4)
+
+| Comando | O que faz | Permissão (padrão) |
+|---|---|:---:|
+| `/queue join <game>` | Entra na fila (líder leva a party) | `bigbanghub.queue.join` (true) |
+| `/campominado`, `/bedwars`, `/hg` | Alias Brigadier = `queue join` | `bigbanghub.queue.join` (true) |
+| `/queue leave` | Sai **da fila** (não da partida) | `bigbanghub.queue.leave` (true) |
+| `/queue status` | Posição na fila | `bigbanghub.queue.status` (true) |
+| `/leave`, `/hub`, `/lobby`, `/sair` | **Abandona a partida** + volta ao Hub | `bigbanghub.match.leave` (true) |
+| `/server hub` | Volta ao Hub; com partida ativa, abandona antes (0.4.4) | (permissão do Velocity) |
+| `/reconnect` | Volta à partida em `DISCONNECTED` (só crash) | — |
+| `/playagain`, `/again` | Refila no mesmo jogo (pós-jogo) | — |
+| `/rematch`, `/revanche` | Vota revanche (pós-jogo) | — |
+| Ação `SERVER` em menus | Transferência direta (não usar em menus públicos) | `bigbanghub.server.connect` (**op** desde 0.4.3) |
+| `/bbhub ...` | Administração e telemetria | `bigbanghub.admin*` (op) |
+
+> `/queue leave` × `/leave`: o primeiro só tira da fila (por isso "não estou em
+> fila" com partida ativa); o segundo abandona partida + fila + volta ao Hub.
+
+---
+
+## 8. Bússola e Menus (`menus.yml`)
 
 Utilizado no servidor com papel `role: HUB`:
 
@@ -161,7 +214,7 @@ compass:
 
 ---
 
-## 7. Proteções do Lobby e Inventário
+## 9. Proteções do Lobby e Inventário
 
 Ativas no `HUB` para preservar o spawn contra quebras, danos, fome e quedas no void:
 
@@ -196,7 +249,7 @@ protection:
 
 ---
 
-## 8. Mensagens, Efeitos Sonoros e HUD (`messages.yml`)
+## 10. Mensagens, Efeitos Sonoros e HUD (`messages.yml`)
 
 Permite personalizar títulos, subtítulos, efeitos sonoros (Sound FX) e actionbars tanto no proxy Velocity quanto nos lobbies Paper:
 

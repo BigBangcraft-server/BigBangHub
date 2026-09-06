@@ -1,6 +1,6 @@
-# Ciclo de Vida de Partidas (BigBangHub 0.3.0)
+# Ciclo de Vida de Partidas (BigBangHub 0.4.4)
 
-O BigBangHub 0.3.0 padroniza o ciclo de vida completo de partidas em toda a rede BigBangCraft. Ele define o contrato entre o proxy Velocity (orquestrador global de partidas e admissões) e as instâncias Paper (executores de minigames).
+O BigBangHub 0.4.4 padroniza o ciclo de vida completo de partidas em toda a rede BigBangCraft. Ele define o contrato entre o proxy Velocity (orquestrador global de partidas e admissões) e as instâncias Paper (executores de minigames).
 
 ---
 
@@ -68,6 +68,7 @@ Para impedir que jogadores acessem minigames por conexão direta ou bypass (`/se
    - Se o ticket já foi consumido (prevenção contra ataques de replay).
    - Se a partida não está cheia ou travada.
 4. **Política de Entrada Direta (`DIRECT_JOIN_REJECTED`)**: Se um jogador entrar sem ticket válido, a admissão é rejeitada e o jogador é imediatamente reconduzido em segurança para o Hub (`hubminigame`), sem kick ou banimento punitivo.
+   - Exceção (0.4.5): com `auto-create-match: false` e **nenhuma partida aberta**, não há o que proteger — o jogador fica livre (gerenciamento externo). Com partida aberta, a proteção vale normal.
 
 ---
 
@@ -95,6 +96,8 @@ Para impedir que jogadores acessem minigames por conexão direta ou bypass (`/se
 
 Se um jogador tentar ingressar em uma segunda partida enquanto ainda estiver registrado como participante ativo em outra, o registro de partidas rejeita a admissão com `ErrorCode.PLAYER_ALREADY_ASSIGNED`.
 A vaga só é liberada quando o jogador deixa formalmente a partida anterior, é eliminado/retornado, ou o match termina.
+
+Desde 0.4.3, tentar `/queue join` com slot `DISCONNECTED` abandonado automaticamente a partida antiga ("Sua partida anterior foi abandonada.") em vez de travar em contradição; `ACTIVE` continua bloqueando até `/leave`.
 
 ---
 
@@ -140,7 +143,7 @@ Quando uma partida atinge `FINISHED` ou `ABORTED`:
 
 ---
 
-## 9. Rematch & Play Again (BigBangHub 0.4.0)
+## 9. Rematch & Play Again (BigBangHub 0.4.4)
 
 ### Fase de Pós-Jogo e Decisão Interativa
 Ao término de uma partida (`FINISHED`), o BigBangHub não desconecta nem retorna imediatamente os jogadores ao lobby. Em vez disso, inicia a fase pós-jogo controlada por `match.post-match-timeout` (padrão: 15s) e envia aos participantes uma mensagem com botões interativos de clique:
@@ -160,3 +163,22 @@ Ao término de uma partida (`FINISHED`), o BigBangHub não desconecta nem retorn
 
 ### Encerramento do Timeout de Decisão
 - Caso o tempo limite de decisão pós-jogo expire antes de um consenso ou sem que o jogador solicite Jogar Novamente, o BigBangHub transfere com segurança os jogadores inativos de volta ao Hub com `ReturnReason.MATCH_FINISHED`.
+
+---
+
+## 10. Saída voluntária × queda: sem loop no Hub (0.4.3 / 0.4.4)
+
+Dois caminhos distintos ao deixar o minigame:
+
+| | Saída voluntária | Queda / crash |
+|---|---|---|
+| Gatilhos | `/leave`, `/hub`, `/lobby`, `/sair`, `/server hub` | Timeout, kick, `DisconnectEvent`, crash |
+| Estado no proxy | `removePlayer` imediato (`LEFT`: "player left" / "voluntary hub transfer") | `DISCONNECTED` com slot reservado 60s |
+| Chegada ao Hub | Sem pendência: fica no Hub, pode refilar na hora | Pendência: auto-reconnect (se `true`) ou prompt `/reconnect` |
+| Refilar | Livre imediato | Abandona o `DISCONNECTED` automaticamente ao entrar na nova fila |
+
+Por que existe essa distinção: antes da 0.4.4, a saída voluntária caía no mesmo
+caminho do crash — chegada ao Hub marcada `DISCONNECTED` + auto-reconnect puxava
+o jogador de volta ao minigame a cada `/hub` (yank loop). Desde 0.4.4 o
+`ServerPreConnect` para o Hub abandona antes de transferir; login fresco (sem
+servidor anterior) nunca abandona, preservando o crash recovery.

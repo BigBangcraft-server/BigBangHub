@@ -31,5 +31,7 @@ match:
 
 aliases:
   campominado: campominado
+  bedwars: bedwars
+  hg: hg
 allow-console-commands: false
 console-command-allowlist: []

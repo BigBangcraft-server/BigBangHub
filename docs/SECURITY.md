@@ -1,4 +1,4 @@
-# Segurança e Hardening (BigBangHub 0.3.0)
+# Segurança e Hardening (BigBangHub 0.4.4)
 
 ## 1. Fronteiras de Confiança e Isolamento
 
@@ -11,7 +11,7 @@
 
 ## 2. Segurança de Ingressos de Admissão (`AdmissionTicket`)
 
-O BigBangHub 0.3.0 introduz tickets criptográficos transitórios para combater acessos indevidos e conexões manuais diretas:
+O BigBangHub usa tickets criptográficos transitórios para combater acessos indevidos e conexões manuais diretas:
 
 1. **Vínculo Estrito**: Todo ticket é emitido pelo Velocity e vinculado de forma imutável a:
    - `playerId`: UUID do jogador;

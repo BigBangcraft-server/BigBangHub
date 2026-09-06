@@ -1,4 +1,4 @@
-# Domínio e Ciclo de Vida de Parties (BigBangHub 0.4.0)
+# Domínio e Ciclo de Vida de Parties (BigBangHub 0.4.4)
 
 O BigBangHub 0.4.0 introduz o suporte nativo e autoritativo a **Parties (Grupos de Jogadores)** na rede BigBangCraft.
 O sistema foi projetado para permitir que amigos permaneçam agrupados, entrem juntos em filas de minigames, sejam admitidos atomicamente na mesma partida e retornem ao Hub mantendo sua coesão social.

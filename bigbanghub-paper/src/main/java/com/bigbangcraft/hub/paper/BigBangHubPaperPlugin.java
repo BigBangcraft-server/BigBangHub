@@ -102,7 +102,7 @@ public final class BigBangHubPaperPlugin extends JavaPlugin implements BigBangHu
             getCommand("queue").setExecutor(new QueueCommand(this));
             getCommand("queue").setTabCompleter(new QueueCommand(this));
             getServer().getPluginManager().registerEvents(new PaperListener(this), this);
-            getLogger().info("BigBangHub Paper 0.4.2 enabled in HUB role with " + games().games().size() + " games");
+            getLogger().info("BigBangHub Paper 0.4.5 enabled in HUB role with " + games().games().size() + " games");
         } else if (snapshot.role() == ServerRole.MINIGAME || snapshot.instance().isPresent()) {
             InstanceAgentSettings agentSettings = snapshot.instance().orElseGet(() ->
                     InstanceAgentSettings.of(getServer().getName(), "default", getServer().getName(),

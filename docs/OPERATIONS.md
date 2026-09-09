@@ -1,4 +1,4 @@
-# Operações (BigBangHub 0.4.5)
+# Operações (BigBangHub 0.4.6)
 
 ## 1. Build e Artefatos
 
@@ -12,10 +12,10 @@ git diff --check
 Os artefatos gerados são:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.4.5.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.5.jar
-bigbanghub-api/build/libs/bigbanghub-api-0.4.5.jar
-bigbanghub-common/build/libs/bigbanghub-common-0.4.5.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.4.6.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.6.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.4.6.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.4.6.jar
 ```
 
 ---
@@ -24,19 +24,19 @@ bigbanghub-common/build/libs/bigbanghub-common-0.4.5.jar
 
 ### No Proxy Velocity (`ubuntu2` - 10.8.0.1):
 ```text
-/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.4.5.jar
+/home/ubuntu/proxy/plugins/bigbanghub-velocity-0.4.6.jar
 ```
 
 ### No Servidor Hub (`brainiac` - 10.8.0.2):
 ```text
-/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.4.5.jar
+/home/brainiac/bigbangcraft/hubminigame/plugins/bigbanghub-paper-0.4.6.jar
 ```
 No `config.yml`: `server.role: HUB`
 
 ### Nos Servidores de Minigame (`brainiac` - 10.8.0.2):
-- BedWars: `/home/brainiac/bigbangcraft/minigames/bedward/plugins/bigbanghub-paper-0.4.5.jar` (pasta `bedward`, sem "s")
-- Campo Minado: `/home/brainiac/bigbangcraft/minigames/campominado/plugins/bigbanghub-paper-0.4.5.jar`
-- HG: `/home/brainiac/bigbangcraft/minigames/hg/plugins/bigbanghub-paper-0.4.5.jar`
+- BedWars: `/home/brainiac/bigbangcraft/minigames/bedward/plugins/bigbanghub-paper-0.4.6.jar` (pasta `bedward`, sem "s")
+- Campo Minado: `/home/brainiac/bigbangcraft/minigames/campominado/plugins/bigbanghub-paper-0.4.6.jar`
+- HG: `/home/brainiac/bigbangcraft/minigames/hg/plugins/bigbanghub-paper-0.4.6.jar`
 
 No `config.yml` de cada minigame (valores live):
 ```yaml
@@ -185,5 +185,5 @@ modo survival (`role: GENERIC`) em `MINIGAME_INTEGRATION.md` §§6 e 10.
 | "Já possui partida" + "sem partida p/ reconectar" | Versão < 0.4.3 (DISCONNECTED perdido no `/server`) | Atualizar para 0.4.3+; paliativo: `/bbhub match <id> abort` |
 | `/hub` volta ao minigame (loop) | Versão < 0.4.4 (auto-reconnect puxa saída voluntária) | Atualizar proxy para 0.4.4+ |
 | NPC expulsa "no active admission ticket" | NPC com `send_to_server` | Trocar para `player_command` + `fancynpcs reload` (nunca só editar: restart reverte!) |
-| `/campominado` vermelho no chat | Alias sem registro Brigadier (< 0.4.1) ou sem alias no `config.yml` | Atualizar para 0.4.1+ e conferir os 3 aliases no proxy e no Hub |
+| `/campominado` não entra na fila | Comportamento certo desde 0.4.6: sem alias no proxy (dono: BigBangMinefield) | Usar `/queue join campominado`, bússola ou NPC |
 | `campominado`/`hg` inalcançáveis do proxy | Túnel SSH `127.0.0.1:25567/25568` caído (`start_tunnel.sh`) | Reiniciar túnel; `ss -ltn \| grep 2556` deve listar as portas |

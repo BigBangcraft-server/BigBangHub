@@ -1,8 +1,8 @@
-# BigBangHub 0.4.5
+# BigBangHub 0.4.6
 
 Infrastructure e Foundation de Hub/Lobby, Filas Globais, Registro de Instâncias, **Ciclo de Vida Padronizado de Partidas**, **Party System**, **Group Matchmaking**, **Reconnect & Session Recovery** e **Rematch & Play Again** para a rede **BigBangCraft** (Paper 26.2 e Velocity 4.1.1, Java 25).
 
-A versão `0.4.5` consolida o subsistema social e de experiência do jogador completo da BigBangCraft:
+A versão `0.4.6` consolida o subsistema social e de experiência do jogador completo da BigBangCraft:
 - **Party System**: Gestão de grupos 100% in-memory com controle de liderança, convites com cooldown e expiração, transferência, expulsão, warp de membros para o mesmo servidor e sucessão automática de líder em caso de desconexão.
 - **Group Queue & Matchmaking Atômico**: Parties ingressam em filas de minigames como uma unidade indivisível, alocadas atomicamente em instâncias com capacidade suficiente sem fragmentar o grupo.
 - **Party Admission & Match Cohesion**: Ingressos criptográficos `AdmissionTicket` enriquecidos com metadados da party, validação sincronizada no Paper backend e rollback coordenado com retorno ao Hub se algum membro falhar.
@@ -36,10 +36,10 @@ A versão `0.4.5` consolida o subsistema social e de experiência do jogador com
 Artefatos gerados:
 
 ```text
-bigbanghub-paper/build/libs/bigbanghub-paper-0.4.5.jar
-bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.5.jar
-bigbanghub-api/build/libs/bigbanghub-api-0.4.5.jar
-bigbanghub-common/build/libs/bigbanghub-common-0.4.5.jar
+bigbanghub-paper/build/libs/bigbanghub-paper-0.4.6.jar
+bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.6.jar
+bigbanghub-api/build/libs/bigbanghub-api-0.4.6.jar
+bigbanghub-common/build/libs/bigbanghub-common-0.4.6.jar
 ```
 
 ---
@@ -69,7 +69,7 @@ bigbanghub-common/build/libs/bigbanghub-common-0.4.5.jar
 ### Comandos de Fila & Administração (Velocity):
 ```text
 /queue join <game>         # Entrar na fila de um minigame (líder entra com a party)
-/campominado|/bedwars|/hg  # Aliases Brigadier = queue join
+/bedwars|/hg  # Aliases Brigadier = queue join (/campominado é do BigBangMinefield)
 /queue leave               # Sair da fila (só fila, não partida)
 /queue status              # Consultar sua posição atual
 /leave|/hub|/lobby|/sair   # Abandonar a partida e voltar ao Hub

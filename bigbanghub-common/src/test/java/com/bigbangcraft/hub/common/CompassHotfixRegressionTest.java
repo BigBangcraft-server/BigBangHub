@@ -45,7 +45,7 @@ class CompassHotfixRegressionTest {
     }
 
     @Test
-    void velocityAliasesMustContainCampominado() throws Exception {
+    void velocityAliasesMustContainQueueAliasesWithoutCampominado() throws Exception {
         Path[] candidates = new Path[]{
                 Path.of("bigbanghub-velocity/src/main/resources/config.yml"),
                 Path.of("../bigbanghub-velocity/src/main/resources/config.yml"),
@@ -55,6 +55,9 @@ class CompassHotfixRegressionTest {
         for (Path p : candidates) if (Files.exists(p)) { cfg = p; break; }
         if (cfg == null) throw new IllegalStateException("velocity config not found");
         String src = Files.readString(cfg);
-        assertTrue(src.contains("campominado: campominado"), "Velocity bundled config must contain campominado alias");
+        assertTrue(src.contains("bedwars: bedwars"), "Velocity bundled config must contain bedwars alias");
+        assertTrue(src.contains("hg: hg"), "Velocity bundled config must contain hg alias");
+        assertFalse(src.contains("campominado: campominado"),
+                "campominado alias must stay out: BigBangMinefield owns /campominado on its backend");
     }
 }

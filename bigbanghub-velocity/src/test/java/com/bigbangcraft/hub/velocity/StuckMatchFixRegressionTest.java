@@ -238,7 +238,7 @@ class StuckMatchFixRegressionTest {
     }
 
     @Test
-    void bundledConfigMustContainAllThreeAliases() throws Exception {
+    void bundledConfigMustContainQueueAliasesWithoutCampominado() throws Exception {
         Path dir = Files.createTempDirectory("alias-all-test");
         for (String file : List.of("config.yml", "menus.yml", "games.yml", "servers.yml", "messages.yml")) {
             try (var input = getClass().getResourceAsStream("/" + file)) {
@@ -246,9 +246,10 @@ class StuckMatchFixRegressionTest {
             }
         }
         var snapshot = ConfigLoader.load(dir);
-        assertEquals("campominado", snapshot.aliases().get("campominado"));
         assertEquals("bedwars", snapshot.aliases().get("bedwars"));
         assertEquals("hg", snapshot.aliases().get("hg"));
+        // 'campominado' sem alias de propósito (dono: BigBangMinefield no backend).
+        assertNull(snapshot.aliases().get("campominado"));
     }
 
     @Test

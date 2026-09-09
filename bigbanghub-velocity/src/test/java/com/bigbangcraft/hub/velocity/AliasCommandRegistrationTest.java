@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AliasCommandRegistrationTest {
 
     @Test
-    void bundledVelocityConfigMustContainCampominadoAlias() throws Exception {
+    void bundledVelocityConfigMustContainQueueAliases() throws Exception {
         Path dir = Files.createTempDirectory("alias-test");
         for (String file : List.of("config.yml", "menus.yml", "games.yml", "servers.yml", "messages.yml")) {
             try (var input = getClass().getResourceAsStream("/" + file)) {
@@ -21,7 +21,11 @@ class AliasCommandRegistrationTest {
             }
         }
         var snapshot = ConfigLoader.load(dir);
-        assertEquals("campominado", snapshot.aliases().get("campominado"), "Bundled velocity config should map campominado alias to campominado game");
+        assertEquals("bedwars", snapshot.aliases().get("bedwars"));
+        assertEquals("hg", snapshot.aliases().get("hg"));
+        // 'campominado' intencionalmente SEM alias no proxy: o BigBangMinefield é
+        // dono de /campominado no backend e o alias global interceptaria o comando.
+        assertNull(snapshot.aliases().get("campominado"));
     }
 
     @Test

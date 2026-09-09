@@ -1,6 +1,6 @@
 # BigBangHub — Real Production Network Inventory & Post-Deployment Audit
 
-Updated: 2026-09-04 — 0.4.5 Live Deployment Validation
+Updated: 2026-09-04 — 0.4.6 Live Deployment Validation
 
 ## 1. Physical & Virtual Nodes
 
@@ -10,7 +10,7 @@ Updated: 2026-09-04 — 0.4.5 Live Deployment Validation
 - **OS**: Linux 6.8.0-64-generic (Ubuntu 24.04 LTS x86_64)
 - **Active Roles**:
   - Velocity Proxy 3.4.0-SNAPSHOT (`0.0.0.0:25565`, no tmux — `startserver.sh` loop)
-  - BigBangHub Velocity Plugin `0.4.5` (active)
+  - BigBangHub Velocity Plugin `0.4.6` (active)
   - SSH tunnel `start_tunnel.sh`: `127.0.0.1:25567/25568` → `10.8.0.2:25567/25568` (campominado/hg)
   - SimpleVoiceChat Proxy (`0.0.0.0:24454/udp`)
   - nLogin Authenticator & SkinsRestorer
@@ -20,10 +20,10 @@ Updated: 2026-09-04 — 0.4.5 Live Deployment Validation
 - **Internal LAN**: `192.168.0.20`
 - **OS**: Linux 6.8.0-60-generic (Ubuntu 24.04 LTS x86_64)
 - **Active Paper Instances (tmux `/tmp/tmux_shared`, auto-restart loops)**:
-  - `hubminigame`: Paper 1.21.4 (`10.8.0.2:25565`) — Role: `HUB` — BigBangHub Paper `0.4.5`
-  - `bedwars`: Paper 1.21.4 (`10.8.0.2:25566`, dir `minigames/bedward`) — Role: `MINIGAME` (`bedwars`) — BigBangHub Paper `0.4.5`
-  - `campominado`: Paper 1.21.4 (`10.8.0.2:25567`) — Role: `MINIGAME` (`campominado`, `BigBangMinefield-1.0.0.jar`) — BigBangHub Paper `0.4.5`
-  - `hg`: Paper 1.21.4 (`10.8.0.2:25568`) — Role: `MINIGAME` (`hg`) — BigBangHub Paper `0.4.5`
+  - `hubminigame`: Paper 1.21.4 (`10.8.0.2:25565`) — Role: `HUB` — BigBangHub Paper `0.4.6`
+  - `bedwars`: Paper 1.21.4 (`10.8.0.2:25566`, dir `minigames/bedward`) — Role: `MINIGAME` (`bedwars`) — BigBangHub Paper `0.4.6`
+  - `campominado`: Paper 1.21.4 (`10.8.0.2:25567`) — Role: `MINIGAME` (`campominado`, `BigBangMinefield-1.0.0.jar`) — BigBangHub Paper `0.4.6`
+  - `hg`: Paper 1.21.4 (`10.8.0.2:25568`) — Role: `MINIGAME` (`hg`) — BigBangHub Paper `0.4.6`
 - **Hub entry points**: compass, `/queue join`, Brigadier aliases `/campominado /bedwars /hg`, FancyNpcs (`player_command`, never `send_to_server`)
 
 ---
@@ -55,4 +55,4 @@ Updated: 2026-09-04 — 0.4.5 Live Deployment Validation
 - [x] Rollback & Re-Deploy Verification
 - [x] Brigadier Entry Aliases (`/campominado`, `/bedwars`, `/hg`) + NPC Queue Admission (0.4.1)
 - [x] Stuck-Match Reconciliation & Explicit `/leave` (0.4.3)
-- [x] Voluntary Hub-Return Abandon, No Yank Loop (0.4.5)
+- [x] Voluntary Hub-Return Abandon, No Yank Loop (0.4.6)

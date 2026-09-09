@@ -16,7 +16,7 @@ final class HubCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String sub = args.length == 0 ? "version" : args[0].toLowerCase(java.util.Locale.ROOT);
         switch (sub) {
-            case "version" -> sender.sendMessage("§bBigBangHub §f0.4.5 §7(Paper 26.2)");
+            case "version" -> sender.sendMessage("§bBigBangHub §f0.4.6 §7(Paper 26.2)");
             case "compass" -> {
                 if (!sender.hasPermission("bigbanghub.compass")) return deny(sender);
                 if (!(sender instanceof org.bukkit.entity.Player player)) {
@@ -34,7 +34,7 @@ final class HubCommand implements CommandExecutor, TabCompleter {
             }
             case "status" -> {
                 if (!sender.hasPermission("bigbanghub.admin")) return deny(sender);
-                sender.sendMessage("§bBigBangHub §f0.4.5 §7| Role: §e" + plugin.role());
+                sender.sendMessage("§bBigBangHub §f0.4.6 §7| Role: §e" + plugin.role());
                 sender.sendMessage("§7Paper bridge: §aONLINE §7| Protocol: §f" + plugin.configSnapshot().proxy().protocolVersion());
                 if (plugin.instanceAgent() != null) {
                     PaperInstanceAgent agent = plugin.instanceAgent();

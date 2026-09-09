@@ -148,20 +148,23 @@ servers:
 
 ---
 
-## 6. Aliases de entrada: `/campominado`, `/bedwars`, `/hg` (`config.yml`)
+## 6. Aliases de entrada: `/bedwars`, `/hg` (`config.yml`, proxy)
 
-Os três aliases abaixo são **obrigatórios** (proxy e Hub Paper). Sem eles, o comando
-fica vermelho no Brigadier e o NPC não tem para onde apontar:
+Os aliases abaixo são registrados como comandos Brigadier no proxy e convergem
+para o mesmo ponto canônico (`QueueService → Routing → Reservation →
+AdmissionTicket → Transfer`):
 
 ```yaml
 aliases:
-  campominado: campominado
   bedwars: bedwars
   hg: hg
 ```
 
-Cada alias converge para o mesmo ponto canônico (`QueueService → Routing →
-Reservation → AdmissionTicket → Transfer`). NPCs usam `player_command <alias>`.
+> **Sem alias `campominado` no proxy (desde 0.4.6):** o plugin BigBangMinefield é
+> dono de `/campominado` no backend campominado, e um alias global no proxy
+> interceptaria o comando em todos os servidores. Entrada no campominado pela
+> fila continua via `/queue join campominado`, bússola e NPC do Hub (o Hub Paper
+> mantém seu alias local `campominado`, que só vale dentro do Hub).
 
 ---
 
@@ -170,7 +173,8 @@ Reservation → AdmissionTicket → Transfer`). NPCs usam `player_command <alias
 | Comando | O que faz | Permissão (padrão) |
 |---|---|:---:|
 | `/queue join <game>` | Entra na fila (líder leva a party) | `bigbanghub.queue.join` (true) |
-| `/campominado`, `/bedwars`, `/hg` | Alias Brigadier = `queue join` | `bigbanghub.queue.join` (true) |
+| `/bedwars`, `/hg` | Aliases Brigadier = `queue join` (proxy) | `bigbanghub.queue.join` (true) |
+| `/campominado` | **Dono: BigBangMinefield** (backend campominado, sem alias no proxy desde 0.4.6) | (do minigame) |
 | `/queue leave` | Sai **da fila** (não da partida) | `bigbanghub.queue.leave` (true) |
 | `/queue status` | Posição na fila | `bigbanghub.queue.status` (true) |
 | `/leave`, `/hub`, `/lobby`, `/sair` | **Abandona a partida** + volta ao Hub | `bigbanghub.match.leave` (true) |

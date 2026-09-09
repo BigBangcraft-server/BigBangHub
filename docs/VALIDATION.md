@@ -1,4 +1,4 @@
-# Relatório de Validação Staging / Live (BigBangHub 0.4.5)
+# Relatório de Validação Staging / Live (BigBangHub 0.4.6)
 
 ## Status da Validação em Ambiente Real
 
@@ -23,7 +23,7 @@ De acordo com as diretrizes operacionais de segurança do projeto BigBangHub:
 
 ## 2. Validação Rigorosa em Test Harness Automatizado
 
-Todas as funcionalidades e invariantes do BigBangHub 0.4.5 foram exaustivamente validadas através de suites de teste automatizadas cobrindo 100% do escopo:
+Todas as funcionalidades e invariantes do BigBangHub 0.4.6 foram exaustivamente validadas através de suites de teste automatizadas cobrindo 100% do escopo:
 
 - **GOAL 04.1 — Fundamentos de Domínio de Party**:
   - `InMemoryPartyServiceTest`: invariantes de liderança, criação, convites, CAS e concorrência.
@@ -51,6 +51,8 @@ Todas as funcionalidades e invariantes do BigBangHub 0.4.5 foram exaustivamente 
 - **HOTFIX 0.4.3/0.4.4 — Stuck Match + Yank Loop**:
   - `StuckMatchFixRegressionTest` (10 testes): reconciliação de server-switch, abandono de `DISCONNECTED` no re-queue, `/leave`, abandono em pre-connect voluntário ao Hub com preservação de crash-rejoin.
 - **0.4.5 — Gerenciamento Externo**:
+- **0.4.6 — Alias /campominado devolvido ao minigame**:
+  - `AliasCommandRegistrationTest`, `CompassHotfixRegressionTest`, `StuckMatchFixRegressionTest`: proxy sem alias `campominado` (bedwars/hg presentes); `/campominado` no backend chega ao BigBangMinefield.
   - `BundledConfigurationTest`: default `auto-create-match: true` travado (compat live) + `false` parseia (modo externo).
 
 ## 3. Validação Live 0.4.4 (2026-09-03, deploy autorizado)
@@ -67,12 +69,12 @@ Validado em produção após deploy (`Loaded plugin bigbanghub 0.4.4`, backends 
 Quando a janela de manutenção for aprovada pelo operador do servidor Brainiac:
 
 ```bash
-# 1. Compilar artefatos da versão 0.4.5
+# 1. Compilar artefatos da versão 0.4.6
 ./gradlew clean build
 
 # 2. Copiar os artefatos gerados
-cp bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.5.jar /caminho/proxy/plugins/
-cp bigbanghub-paper/build/libs/bigbanghub-paper-0.4.5.jar /caminho/paper/plugins/
+cp bigbanghub-velocity/build/libs/bigbanghub-velocity-0.4.6.jar /caminho/proxy/plugins/
+cp bigbanghub-paper/build/libs/bigbanghub-paper-0.4.6.jar /caminho/paper/plugins/
 
 # 3. Recarregar as configurações ou reiniciar de forma coordenada
 ```

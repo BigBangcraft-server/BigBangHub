@@ -121,7 +121,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.5", authors = {"BigBangCraft"})
+@Plugin(id = "bigbanghub", name = "BigBangHub", version = "0.4.6", authors = {"BigBangCraft"})
 public final class BigBangHubVelocityPlugin implements BigBangHubApi {
     private final ProxyServer proxy;
     private final Logger logger;
@@ -230,7 +230,7 @@ public final class BigBangHubVelocityPlugin implements BigBangHubApi {
                 }
             }
             syncAliasCommands(snapshot);
-            logger.info("BigBangHub Velocity 0.4.5 enabled with {} games", games().games().size());
+            logger.info("BigBangHub Velocity 0.4.6 enabled with {} games", games().games().size());
         } catch (ConfigException | IOException | IllegalArgumentException exception) {
             logger.error("BigBangHub failed to enable", exception);
             proxy.shutdown();

@@ -30,7 +30,9 @@ match:
   post-match-timeout: 15s
 
 aliases:
-  campominado: campominado
+  # NOTA: sem alias 'campominado' de propósito — o plugin BigBangMinefield é dono
+  # de /campominado no backend campominado, e alias no proxy interceptaria global.
+  # Entrada via fila continua por /queue join campominado, bússola e NPC (hub).
   bedwars: bedwars
   hg: hg
 allow-console-commands: false

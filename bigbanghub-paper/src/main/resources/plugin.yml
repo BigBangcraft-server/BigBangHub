@@ -1,5 +1,5 @@
 name: BigBangHub
-version: '0.4.5'
+version: '0.4.6'
 main: com.bigbangcraft.hub.paper.BigBangHubPaperPlugin
 api-version: '1.21'
 author: BigBangCraft

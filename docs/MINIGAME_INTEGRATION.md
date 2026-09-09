@@ -231,6 +231,7 @@ public class CampoMinadoController {
 O BigBangHub protege automaticamente seus servidores de minigame contra entradas não autorizadas:
 - Se um jogador tentar entrar diretamente na instância (`/server campominado`), o backend consulta o Velocity via `ADMISSION_REQUEST`. Sem ticket válido, a admissão é rejeitada (`DIRECT_JOIN_REJECTED`) e o jogador retorna ao Hub (`hubminigame`) — sem kick punitivo. **Isso é o comportamento correto, não um bug.**
 - NPCs (FancyNpcs) e menus **devem** usar `player_command <alias>` / ação `QUEUE`, nunca `send_to_server`: transferência direta pula fila→reserva→ticket e será rejeitada. Ver `FancyNpcs/npcs.yml` no Hub: `ANY_CLICK: { action: player_command, value: campominado }`.
+  O `player_command campominado` no Hub resolve pelo alias **local** do Hub Paper (só vale no Hub); no proxy não há alias global desde 0.4.6, então `/campominado` digitado no backend campominado chega ao BigBangMinefield.
 - Ação `SERVER` em menus exige a permissão `bigbanghub.server.connect` (padrão: `op` desde 0.4.3). Menus públicos usam `QUEUE`.
 - O minigame **não precisa** (e não deve) implementar verificação manual de entrada direta.
 

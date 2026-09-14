@@ -1,5 +1,5 @@
 name: BigBangHub
-version: '0.4.6'
+version: '0.4.7'
 main: com.bigbangcraft.hub.paper.BigBangHubPaperPlugin
 api-version: '1.21'
 author: BigBangCraft
@@ -47,6 +47,9 @@ permissions:
   bigbanghub.party.admin:
     default: op
   bigbanghub.server.connect:
+    default: op
+  bigbanghub.admission.bypass:
+    description: Allows direct backend join without an admission ticket (admin maintenance)
     default: op
   bigbanghub.match.leave:
     default: true

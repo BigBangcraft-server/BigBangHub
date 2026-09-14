@@ -158,6 +158,14 @@ public final class PaperMatchManager implements MatchManager {
     }
 
     public void handlePlayerJoin(Player player) {
+        // Admin bypass: direct /server hg for maintenance without a ticket.
+        // Normal players fall through to the ticket validation below.
+        if (player.hasPermission("bigbanghub.admission.bypass")) {
+            plugin.getLogger().info("ADMIN_ADMISSION_BYPASS player=" + player.getName()
+                    + " uuid=" + player.getUniqueId() + " target=hg");
+            player.sendMessage("§aEntrada administrativa liberada (bypass). Bom trabalho!");
+            return;
+        }
         PaperMatchHandle handle = currentMatch.get();
         if (handle == null) {
             if (!autoCreateMatch) {

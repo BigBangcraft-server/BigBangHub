@@ -22,10 +22,13 @@ class AliasCommandRegistrationTest {
         }
         var snapshot = ConfigLoader.load(dir);
         assertEquals("bedwars", snapshot.aliases().get("bedwars"));
-        assertEquals("hg", snapshot.aliases().get("hg"));
         // 'campominado' intencionalmente SEM alias no proxy: o BigBangMinefield é
         // dono de /campominado no backend e o alias global interceptaria o comando.
         assertNull(snapshot.aliases().get("campominado"));
+        // 'hg' intencionalmente SEM alias no proxy: o BigBangHungerGames é dono
+        // de /hg no backend hg (ex.: /hg setpos1) e o alias global interceptava
+        // o comando dos admins.
+        assertNull(snapshot.aliases().get("hg"));
     }
 
     @Test

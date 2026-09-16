@@ -69,7 +69,8 @@ bigbanghub-common/build/libs/bigbanghub-common-0.4.6.jar
 ### Comandos de Fila & Administração (Velocity):
 ```text
 /queue join <game>         # Entrar na fila de um minigame (líder entra com a party)
-/bedwars|/hg  # Aliases Brigadier = queue join (/campominado é do BigBangMinefield)
+/bedwars                   # Alias Brigadier = queue join bedwars (proxy)
+                           # /campominado é do BigBangMinefield e /hg é do BigBangHungerGames
 /queue leave               # Sair da fila (só fila, não partida)
 /queue status              # Consultar sua posição atual
 /leave|/hub|/lobby|/sair   # Abandonar a partida e voltar ao Hub

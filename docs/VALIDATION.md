@@ -54,6 +54,8 @@ Todas as funcionalidades e invariantes do BigBangHub 0.4.6 foram exaustivamente 
 - **0.4.6 — Alias /campominado devolvido ao minigame**:
   - `AliasCommandRegistrationTest`, `CompassHotfixRegressionTest`, `StuckMatchFixRegressionTest`: proxy sem alias `campominado` (bedwars/hg presentes); `/campominado` no backend chega ao BigBangMinefield.
   - `BundledConfigurationTest`: default `auto-create-match: true` travado (compat live) + `false` parseia (modo externo).
+- **Alias /hg devolvido ao BigBangHungerGames**:
+  - `AliasCommandRegistrationTest`: proxy sem alias `hg` (só `bedwars` presente). O comando `/hg` do backend hg (`/hg setpos1`, `/hg setpos2`) deixa de ser interceptado pelo proxy; a entrada na fila do HG continua por `/queue join hg`, bússola e NPC.
 
 ## 3. Validação Live 0.4.4 (2026-09-03, deploy autorizado)
 

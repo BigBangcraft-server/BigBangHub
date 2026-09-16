@@ -247,9 +247,10 @@ class StuckMatchFixRegressionTest {
         }
         var snapshot = ConfigLoader.load(dir);
         assertEquals("bedwars", snapshot.aliases().get("bedwars"));
-        assertEquals("hg", snapshot.aliases().get("hg"));
         // 'campominado' sem alias de propósito (dono: BigBangMinefield no backend).
         assertNull(snapshot.aliases().get("campominado"));
+        // 'hg' sem alias de propósito (dono: BigBangHungerGames no backend, ex: /hg setpos1).
+        assertNull(snapshot.aliases().get("hg"));
     }
 
     @Test

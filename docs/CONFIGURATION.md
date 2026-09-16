@@ -148,7 +148,7 @@ servers:
 
 ---
 
-## 6. Aliases de entrada: `/bedwars`, `/hg` (`config.yml`, proxy)
+## 6. Aliases de entrada: `/bedwars` (`config.yml`, proxy)
 
 Os aliases abaixo são registrados como comandos Brigadier no proxy e convergem
 para o mesmo ponto canônico (`QueueService → Routing → Reservation →
@@ -157,7 +157,6 @@ AdmissionTicket → Transfer`):
 ```yaml
 aliases:
   bedwars: bedwars
-  hg: hg
 ```
 
 > **Sem alias `campominado` no proxy (desde 0.4.6):** o plugin BigBangMinefield é
@@ -166,6 +165,14 @@ aliases:
 > fila continua via `/queue join campominado`, bússola e NPC do Hub (o Hub Paper
 > mantém seu alias local `campominado`, que só vale dentro do Hub).
 
+> **Sem alias `hg` no proxy:** o plugin BigBangHungerGames é dono de `/hg` no
+> backend hg (ex.: `/hg setpos1`, `/hg setpos2` para setup de arena). Com o alias
+> no proxy, `/hg` era interceptado globalmente e o admin nunca chegava ao comando
+> do backend; pior, o proxy tentava transferi-lo para `hg` (servidor em que ele
+> já estava) e exibia "Falha ao conectar à partida".
+> Entrada na fila do HG continua via `/queue join hg`, bússola e NPC do Hub.
+
+
 ---
 
 ## 7. Comandos de jogador e permissões (0.4.4)
@@ -173,8 +180,9 @@ aliases:
 | Comando | O que faz | Permissão (padrão) |
 |---|---|:---:|
 | `/queue join <game>` | Entra na fila (líder leva a party) | `bigbanghub.queue.join` (true) |
-| `/bedwars`, `/hg` | Aliases Brigadier = `queue join` (proxy) | `bigbanghub.queue.join` (true) |
+| `/bedwars` | Alias Brigadier = `queue join` (proxy) | `bigbanghub.queue.join` (true) |
 | `/campominado` | **Dono: BigBangMinefield** (backend campominado, sem alias no proxy desde 0.4.6) | (do minigame) |
+| `/hg` | **Dono: BigBangHungerGames** (backend hg, sem alias no proxy) | (do minigame) |
 | `/queue leave` | Sai **da fila** (não da partida) | `bigbanghub.queue.leave` (true) |
 | `/queue status` | Posição na fila | `bigbanghub.queue.status` (true) |
 | `/leave`, `/hub`, `/lobby`, `/sair` | **Abandona a partida** + volta ao Hub | `bigbanghub.match.leave` (true) |

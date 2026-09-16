@@ -21,13 +21,15 @@ class AliasCommandRegistrationTest {
             }
         }
         var snapshot = ConfigLoader.load(dir);
-        assertEquals("bedwars", snapshot.aliases().get("bedwars"));
-        // 'campominado' intencionalmente SEM alias no proxy: o BigBangMinefield é
-        // dono de /campominado no backend e o alias global interceptaria o comando.
+        // Nenhum alias de minigame no proxy: os plugins de backend são donos dos
+        // comandos e um alias global os interceptaria.
+        assertTrue(snapshot.aliases().isEmpty());
         assertNull(snapshot.aliases().get("campominado"));
+        // 'bedwars' intencionalmente SEM alias no proxy: o MBedwars é dono de
+        // /bedwars (e /bw) no backend bedwars.
+        assertNull(snapshot.aliases().get("bedwars"));
         // 'hg' intencionalmente SEM alias no proxy: o BigBangHungerGames é dono
-        // de /hg no backend hg (ex.: /hg setpos1) e o alias global interceptava
-        // o comando dos admins.
+        // de /hg no backend hg (ex.: /hg setpos1).
         assertNull(snapshot.aliases().get("hg"));
     }
 

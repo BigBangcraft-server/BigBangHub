@@ -29,14 +29,13 @@ match:
   auto-reconnect: true
   post-match-timeout: 15s
 
-aliases:
-  # NOTA: sem alias 'campominado' de propósito — o plugin BigBangMinefield é dono
-  # de /campominado no backend campominado, e alias no proxy interceptaria global.
-  # Entrada via fila continua por /queue join campominado, bússola e NPC (hub).
-  # NOTA: sem alias 'hg' de propósito — o plugin BigBangHungerGames é dono de
-  # /hg (ex.: /hg setpos1, /hg setpos2) no backend hg, e alias no proxy
-  # interceptaria global (que é exatamente o que quebrava o /hg dos admins).
-  # Entrada na fila continua por /queue join hg, bússola e NPC (hub).
-  bedwars: bedwars
+# NOTA: nenhum alias de minigame no proxy de propósito — os plugins de backend
+# são donos desses comandos e um alias global no proxy os intercepta em TODOS os
+# servidores, impedindo os admins de usarem o comando do plugin:
+#  - /campominado -> BigBangMinefield (backend campominado, sem alias desde 0.4.6)
+#  - /bedwars     -> MBedwars (backend bedwars; também expõe /bw)
+#  - /hg          -> BigBangHungerGames (backend hg, ex.: /hg setpos1)
+# Entrada nas filas continua por /queue join <game>, bússola e NPC do Hub.
+aliases: {}
 allow-console-commands: false
 console-command-allowlist: []

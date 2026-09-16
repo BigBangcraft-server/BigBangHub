@@ -238,7 +238,7 @@ class StuckMatchFixRegressionTest {
     }
 
     @Test
-    void bundledConfigMustContainQueueAliasesWithoutCampominado() throws Exception {
+    void bundledConfigMustNotContainMinigameAliases() throws Exception {
         Path dir = Files.createTempDirectory("alias-all-test");
         for (String file : List.of("config.yml", "menus.yml", "games.yml", "servers.yml", "messages.yml")) {
             try (var input = getClass().getResourceAsStream("/" + file)) {
@@ -246,11 +246,11 @@ class StuckMatchFixRegressionTest {
             }
         }
         var snapshot = ConfigLoader.load(dir);
-        assertEquals("bedwars", snapshot.aliases().get("bedwars"));
-        // 'campominado' sem alias de propósito (dono: BigBangMinefield no backend).
-        assertNull(snapshot.aliases().get("campominado"));
-        // 'hg' sem alias de propósito (dono: BigBangHungerGames no backend, ex: /hg setpos1).
-        assertNull(snapshot.aliases().get("hg"));
+        // Nenhum alias de minigame no proxy: plugins de backend são donos dos comandos.
+        assertTrue(snapshot.aliases().isEmpty());
+        assertNull(snapshot.aliases().get("bedwars"));  // dono: MBedwars no backend
+        assertNull(snapshot.aliases().get("campominado")); // dono: BigBangMinefield no backend
+        assertNull(snapshot.aliases().get("hg")); // dono: BigBangHungerGames no backend
     }
 
     @Test

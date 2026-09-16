@@ -148,29 +148,31 @@ servers:
 
 ---
 
-## 6. Aliases de entrada: `/bedwars` (`config.yml`, proxy)
+## 6. Aliases de entrada no proxy (`config.yml`)
 
-Os aliases abaixo são registrados como comandos Brigadier no proxy e convergem
-para o mesmo ponto canônico (`QueueService → Routing → Reservation →
-AdmissionTicket → Transfer`):
+Por padrão o proxy **não** registra alias de minigame:
 
 ```yaml
-aliases:
-  bedwars: bedwars
+aliases: {}
 ```
 
-> **Sem alias `campominado` no proxy (desde 0.4.6):** o plugin BigBangMinefield é
-> dono de `/campominado` no backend campominado, e um alias global no proxy
-> interceptaria o comando em todos os servidores. Entrada no campominado pela
-> fila continua via `/queue join campominado`, bússola e NPC do Hub (o Hub Paper
-> mantém seu alias local `campominado`, que só vale dentro do Hub).
+Regra: quando um plugin de backend é dono de um comando (ex.: `/hg`,
+`/bedwars`, `/campominado`), um alias Brigadier no proxy intercepta o comando em
+**todos** os servidores e impede o admin de usar o comando do plugin. Pior: se o
+jogador já estiver no servidor-alvo, o matchmaking tenta transferi-lo para o
+mesmo servidor e exibe "Falha ao conectar à partida".
 
-> **Sem alias `hg` no proxy:** o plugin BigBangHungerGames é dono de `/hg` no
-> backend hg (ex.: `/hg setpos1`, `/hg setpos2` para setup de arena). Com o alias
-> no proxy, `/hg` era interceptado globalmente e o admin nunca chegava ao comando
-> do backend; pior, o proxy tentava transferi-lo para `hg` (servidor em que ele
-> já estava) e exibia "Falha ao conectar à partida".
-> Entrada na fila do HG continua via `/queue join hg`, bússola e NPC do Hub.
+Donos atuais por backend:
+
+| Comando | Dono no backend | Alias no proxy |
+|---|---|---|
+| `/campominado` | BigBangMinefield | não (desde 0.4.6) |
+| `/bedwars` (e `/bw`) | MBedwars | não |
+| `/hg` | BigBangHungerGames (`/hg setpos1`, `/hg setpos2`) | não |
+
+Entrada nas filas continua por `/queue join <game>`, bússola e NPC do Hub (o Hub
+Paper mantém aliases locais que só valem dentro do Hub). Aliases no proxy seguem
+suportados via `aliases:` em `config.yml` para quem não tiver colisão.
 
 
 ---
@@ -180,7 +182,7 @@ aliases:
 | Comando | O que faz | Permissão (padrão) |
 |---|---|:---:|
 | `/queue join <game>` | Entra na fila (líder leva a party) | `bigbanghub.queue.join` (true) |
-| `/bedwars` | Alias Brigadier = `queue join` (proxy) | `bigbanghub.queue.join` (true) |
+| `/bedwars` | **Dono: MBedwars** (backend bedwars, sem alias no proxy; também `/bw`) | (do minigame) |
 | `/campominado` | **Dono: BigBangMinefield** (backend campominado, sem alias no proxy desde 0.4.6) | (do minigame) |
 | `/hg` | **Dono: BigBangHungerGames** (backend hg, sem alias no proxy) | (do minigame) |
 | `/queue leave` | Sai **da fila** (não da partida) | `bigbanghub.queue.leave` (true) |

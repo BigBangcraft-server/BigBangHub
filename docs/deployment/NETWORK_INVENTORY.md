@@ -24,7 +24,7 @@ Updated: 2026-09-04 — 0.4.6 Live Deployment Validation
   - `bedwars`: Paper 1.21.4 (`10.8.0.2:25566`, dir `minigames/bedward`) — Role: `MINIGAME` (`bedwars`) — BigBangHub Paper `0.4.6`
   - `campominado`: Paper 1.21.4 (`10.8.0.2:25567`) — Role: `MINIGAME` (`campominado`, `BigBangMinefield-1.0.0.jar`) — BigBangHub Paper `0.4.6`
   - `hg`: Paper 1.21.4 (`10.8.0.2:25568`) — Role: `MINIGAME` (`hg`) — BigBangHub Paper `0.4.6`
-- **Hub entry points**: compass, `/queue join`, Brigadier alias `/bedwars` (`/campominado` é dono no backend via BigBangMinefield e `/hg` via BigBangHungerGames), FancyNpcs (`player_command`, never `send_to_server`)
+- **Hub entry points**: compass, `/queue join`, **sem** alias de minigame no proxy (`/campominado` é do BigBangMinefield, `/bedwars` do MBedwars e `/hg` do BigBangHungerGames), FancyNpcs (`player_command`, never `send_to_server`)
 
 ---
 
@@ -53,6 +53,6 @@ Updated: 2026-09-04 — 0.4.6 Live Deployment Validation
 - [x] Play Again & Rematch Flow Handling
 - [x] Strict Network Boundary Security & Command Permissions
 - [x] Rollback & Re-Deploy Verification
-- [x] Brigadier Entry Alias (`/bedwars`) + NPC Queue Admission (0.4.1)
+- [x] NPC Queue Admission + no proxy minigame aliases (backend plugins own their commands)
 - [x] Stuck-Match Reconciliation & Explicit `/leave` (0.4.3)
 - [x] Voluntary Hub-Return Abandon, No Yank Loop (0.4.6)
